@@ -1,0 +1,27 @@
+{
+  "input_dir": "",
+  "filenames": {
+    "eqtl": "",
+    "genotype": "",
+    "alleles": "",
+    "expression": "",
+    "covariates": "",
+    "markers": ""
+  },
+  "interaction_input_dir": "",
+  "interaction_input_subfolders": {
+    "covariates_of_interest": "covariates",
+    "technical_covariates": "technical_covariates"
+  },
+  "interaction_filenames": {
+    "pvalues": "",
+    "zscores": "",
+    "snp_tvalues": "",
+    "inter_tvalues": ""
+  },
+  "covariates_to_include": {},
+  "covariates_excl_from_overview": [],
+  "max_url_length": 8190,
+  "maf_cutoff": 0.05,
+  "include_top_n": 3
+}

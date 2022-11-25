@@ -101,7 +101,7 @@ print_command_arguments(){
     if [ ! -f ${outfile_step0} ]
     then
         echo "${outfile_step0} does not exist, start step 0"
-        python $github_dir/GeneNetwork/scripts_per_step/0_remove_duplicate_sameCounts_scaffolded_genes.py \
+        python $github_dir/scripts_per_step/0_remove_duplicate_sameCounts_scaffolded_genes.py \
             -e $expression_file \
             -o $TMPDIR/0_remove_genes/$(basename $outfile_step0) \
             -g $gtf
@@ -120,12 +120,12 @@ print_command_arguments(){
     if [ ! -f ${new_output_file_step1} ]
     then
         echo "start step 1"
-        bash $github_dir/GeneNetwork/scripts_per_step/1_select_samples.sh \
+        bash $github_dir/scripts_per_step/1_select_samples.sh \
             -e $outfile_step0 \
             -p $project_dir \
             -o $TMPDIR/1_selectSamples_$prev_step/ \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/ \
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/ \
             -s $sample_file
         # input of next file expect postfix of extractedColumnsnoVarianceRowsRemoved.txt.gz but is extractedColumns_noVarRemoved.txt.gz
         # change this
@@ -150,12 +150,12 @@ print_command_arguments(){
     if [ ! -f ${output_file_step2} ];
     then
         echo "start step 2"
-        bash $github_dir/GeneNetwork/scripts_per_step/2_remove_duplicate_samples.sh \
+        bash $github_dir/scripts_per_step/2_remove_duplicate_samples.sh \
             -p $project_dir \
             -e $new_output_file_step1 \
             -o $TMPDIR/$(basename $output_file_step2) \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/
         echo "done"
         mkdir -p $(dirname $output_file_step2)
         mv $TMPDIR/$(basename $output_file_step2) $output_file_step2
@@ -167,12 +167,12 @@ print_command_arguments(){
     if [ ! -f $output_file_step4 ];
     then
         # Step 4. Do deseq normalisation on the original counts
-        bash $github_dir/GeneNetwork/scripts_per_step/4_DeseqNormalizedData.sh \
+        bash $github_dir/scripts_per_step/4_DeseqNormalizedData.sh \
             -p $project_dir \
             -e $output_file_step2 \
             -f $TMPDIR/4_deseqNormalized/$(basename ${output_file_step2%.txt.gz}noVarianceRowsRemoved.DESeqNorm.txt.gz) \
             -o $TMPDIR/4_deseqNormalized/ \
-            -g $github_dir/GeneNetwork/ \
+            -g $github_dir/ \
             -z $TMPDIR/4_deseqNormalized/PCA_corrected_expression/ \
             -m $mem
         mkdir -p $output_dir/4_deseqNormalized/
@@ -187,12 +187,12 @@ print_command_arguments(){
     if [ ! -f $output_file_step5 ];
     then
         # Step 5. Remove covariates from deseq normalized data
-        bash $github_dir/GeneNetwork/scripts_per_step/5_RemoveCovariates.sh \
+        bash $github_dir/scripts_per_step/5_RemoveCovariates.sh \
             -p $project_dir \
             -e $output_file_step4 \
             -o $TMPDIR/5_covariatesRemoved \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/ \
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/ \
             -z $covar_table \
             -m $mem
         mkdir -p $output_dir/5_covariatesRemoved/
@@ -213,12 +213,12 @@ print_command_arguments(){
     if [ ! -f $output_file_step6 ]  && [ ! -f ${output_file_step6}.gz ];
     then
         # Step 6. Make correlation matrix
-        bash $github_dir/GeneNetwork/scripts_per_step/6_CorrelationMatrix.sh \
+        bash $github_dir/scripts_per_step/6_CorrelationMatrix.sh \
             -p $project_dir \
             -e $output_file_step5 \
             -o ${output_file_step6} \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/ \
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/ \
             -t $threads \
             -m $mem \
             -q $qos
@@ -243,12 +243,12 @@ print_command_arguments(){
     then
         # step 7. Run evd on correlation matrix
         mkdir -p  $output_dir/7_evd_on_correlation_matrix/
-        rsync -vP $github_dir/GeneNetwork/scripts_per_step/7_evd_on_correlation.sh $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
+        rsync -vP $github_dir/scripts_per_step/7_evd_on_correlation.sh $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACECORMATRIX;$output_file_step6;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACECOVCORRECTEDEXPRESSION;${output_file_step5%.gz};" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACEOUTDIR;$output_dir/;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACETHREADS;$threads;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
-        sed -i "s;REPLACESCRIPTDIR;$github_dir/GeneNetwork/scripts_per_step/;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
+        sed -i "s;REPLACESCRIPTDIR;$github_dir/scripts_per_step/;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACESVDSOLVER;auto;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACEMEM;$mem;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh
         sed -i "s;REPLACEQOS;$qos;" $output_dir/7_evd_on_correlation_matrix/7_evd_on_correlation.sh

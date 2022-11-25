@@ -1,0 +1,33 @@
+{
+  "input_dir": "",
+  "filenames": {
+    "eqtl": "",
+    "genotype": "",
+    "alleles": "",
+    "expression": "",
+    "covariates": "",
+    "markers": ""
+  },
+  "interaction_input_dir": "",
+  "interaction_input_subfolders": {
+    "covariates_of_interest": "covariates",
+    "technical_covariates": "technical_covariates"
+  },
+  "interaction_filenames": {
+    "pvalues": "",
+    "zscores": "",
+    "snp_tvalues": "",
+    "inter_tvalues": ""
+  },
+  "groups": [],
+  "celltypes": ["CellTypeA"],
+  "colormap": {
+    "CellTypeA": "#hexcode",
+    "...": "..."
+  },
+  "cellmap_method_prefix_and_suffix": [
+    ["Method1Prefix", "Method1Suffix"],
+    ["...", "..."]
+    ],
+  "marker_genes_prefix": ""
+}

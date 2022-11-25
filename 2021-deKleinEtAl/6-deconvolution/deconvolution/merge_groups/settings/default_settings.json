@@ -1,0 +1,20 @@
+{
+  "eqtl_datafile": "/groups/umcg-biogen/tmp03/output/2019-11-06-FreezeTwoDotOne/2020-03-12-deconvolution/matrix_preparation/output/combine_eqtlprobes/eQTLprobes_combined.txt.gz",
+  "cov_datafile": "/groups/umcg-biogen/tmp03/output/2019-11-06-FreezeTwoDotOne/2020-03-12-deconvolution/matrix_preparation/output/create_cov_matrix/covariates_table.txt.gz",
+  "data_dir": "/groups/umcg-biogen/tmp03/output/2019-11-06-FreezeTwoDotOne/2020-03-12-deconvolution/matrix_preparation/output/create_matrices",
+  "groups_data_dir": "/groups/umcg-biogen/tmp03/output/2019-11-06-FreezeTwoDotOne/2020-03-12-deconvolution/matrix_preparation/output/create_groups/",
+  "inter_groups_dir": "/groups/umcg-biogen/tmp03/output/2019-11-06-FreezeTwoDotOne/2020-03-12-deconvolution/analyse_interactions/output",
+  "interaction_regex": "^InteractionZScoresMatrix-[0-9]+Covariates.txt$",
+  "filenames": {
+    "object": "group.pkl",
+    "eqtl": "eqtl_table.txt.gz",
+    "genotype": "genotype_table.txt.gz",
+    "alleles": "genotype_alleles.txt.gz",
+    "expression": "expression_table.txt.gz",
+    "covariates": "covariates_table.txt.gz",
+    "interaction": "interaction_table.txt.gz",
+    "markers": "markers_table.txt.gz"
+  },
+  "output_dir": "output",
+  "celltypes": ["Neuron", "Oligodendrocyte", "EndothelialCell", "Microglia", "Astrocyte"]
+}

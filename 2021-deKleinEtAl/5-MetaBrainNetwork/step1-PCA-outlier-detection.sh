@@ -69,7 +69,7 @@ print_command_arguments(){
     if [ ! -f ${outfile_step0} ]
     then
         echo "${outfile_step0} does not exist, start step 0"
-        python $github_dir/GeneNetwork/scripts_per_step/0_remove_duplicate_sameCounts_scaffolded_genes.py \
+        python $github_dir/scripts_per_step/0_remove_duplicate_sameCounts_scaffolded_genes.py \
             -e $expression_file \
             -o $TMPDIR/0_remove_genes/$(basename $outfile_step0) \
             -g $gtf
@@ -86,12 +86,12 @@ print_command_arguments(){
     if [ ! -f ${new_output_file_step1} ]
     then
         echo "start step 1"
-        bash $github_dir/GeneNetwork/scripts_per_step/1_select_samples.sh \
+        bash $github_dir/scripts_per_step/1_select_samples.sh \
             -e $outfile_step0 \
             -p $project_dir \
             -o $TMPDIR/1_selectSamples_$step/ \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/ \
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/ \
             -s $sample_file
         # input of next file expect postfix of extractedColumnsnoVarianceRowsRemoved.txt.gz but is extractedColumns_noVarRemoved.txt.gz
         # change this
@@ -114,12 +114,12 @@ print_command_arguments(){
     if [ ! -f ${output_file_step2} ];
     then
         echo "start step 2"
-        bash $github_dir/GeneNetwork/scripts_per_step/2_remove_duplicate_samples.sh \
+        bash $github_dir/scripts_per_step/2_remove_duplicate_samples.sh \
             -p $project_dir \
             -e $new_output_file_step1 \
             -o $TMPDIR/$(basename $output_file_step2) \
-            -c $github_dir/GeneNetwork/config_file_templates/ \
-            -g $github_dir/GeneNetwork/
+            -c $github_dir/config_file_templates/ \
+            -g $github_dir/
         echo "done"
         mkdir -p $(dirname $output_file_step2)
         mv $TMPDIR/$(basename $output_file_step2) $output_file_step2
@@ -132,11 +132,11 @@ print_command_arguments(){
     output_file_step3=$output_dir/3_quantileNormalized_$step/$(basename ${output_file_step2%.txt.gz}.QuantileNormalized.txt.gz)
     if [ ! -f $output_dir/3_quantileNormalized_$step/pca.png ];
     then
-       bash $github_dir/GeneNetwork/scripts_per_step/3_PCA_on_quantNormalizedData.sh \
+       bash $github_dir/scripts_per_step/3_PCA_on_quantNormalizedData.sh \
            -p $project_dir \
            -e $output_file_step2 \
            -o $TMPDIR/3_quantileNormalized_$step/ \
-           -c $github_dir/GeneNetwork/config_file_templates/ \
+           -c $github_dir/config_file_templates/ \
            -j $jar_dir \
            -m $mem
 
@@ -160,7 +160,7 @@ usage(){
     echo "                    -s sample_file -q step \\"
     echo "                    -o output_dir -p project_dir \\"
     echo "                    -j jar_dir -g github_dir -m mem \\"
-    echo "                    -d GeneNetworkDir -q quant_norm (default: false)"
+    echo "                    -d GeneNetworkDir -m memory -a gtf"
     echo "  -t      TMPDIR where files will be written during runtime"
     echo "  -e      Expression file"
     echo "  -s      File with list of samples to include (exclude all others)"
@@ -254,7 +254,7 @@ parse_commandline(){
         usage
         exit 1;
     fi
-    if [ -z "$github_dir/GeneNetwork/config_file_templates/" ];
+    if [ -z "$github_dir/config_file_templates/" ];
     then
         echo "ERROR: -c/--config_template_dir not set!"
         usage

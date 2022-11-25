@@ -1,5 +1,5 @@
-module load Java/1.8.0_74
-module load parallel
+module load Java
+#module load parallel
 module load Python
 module load BWA
 
@@ -17,7 +17,7 @@ dateprefix=$(date '+%Y-%m-%d')
 if [ ! -f "$indir/eQTLsFDR0.05.txt.gz" ]; then
 	lnct=$(zcat $indir/eQTLs.txt.gz | wc -l)
 	lnct=$(($lnct - 1))
-	java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar \
+	java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar \
 		--mode util \
 		--fdr --fdrmethod full \
 		--in $indir \
@@ -34,11 +34,11 @@ readdir="$workdir/reads-10mbwindow-35bp/"
 mkdir -pv $readdir
 
 # make sequences
-java -Xmx8g -jar /groups/umcg-biogen/tmp03/tools/SequenceCrossmap.jar \
+java -Xmx8g -jar /groups/umcg-biogen/tmp01/tools/SequenceCrossmap.jar \
         makeseq \
         $indir/eQTLsFDR0.05-combosForCrossMap.txt \
-        /apps/data/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/GRCh38.primary_assembly.genome.fa \
-        /groups/umcg-biogen/tmp03/annotation/gencode/gencode.v32.primary_assembly.annotation.collapsedGenes.gtf.gz \
+	/groups/umcg-biogen/tmp01/annotation/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/GRCh38.primary_assembly.genome.fa \
+        /groups/umcg-biogen/tmp01/annotation/gencode/gencode.v32.primary_assembly.annotation.collapsedGenes.gtf.gz \
         $readdir \
         10000000 35 2 true false
 # exit 1
@@ -56,7 +56,7 @@ bash < "$readdir/align.sh"
 bash "$readdir/samse.sh"
 
 # quantify crossmapping reads per eqtl
-java -Xmx8g -jar /groups/umcg-biogen/tmp03/tools/SequenceCrossmap.jar \
+java -Xmx8g -jar /groups/umcg-biogen/tmp01/tools/SequenceCrossmap.jar \
         quantifyIndividualEQTL \
         $indir/eQTLsFDR0.05.txt.gz \
         $readdir \
@@ -66,7 +66,7 @@ java -Xmx8g -jar /groups/umcg-biogen/tmp03/tools/SequenceCrossmap.jar \
 rm -rv $readdir
 
 # select non-crossmapping eqtls
-python /groups/umcg-biogen/tmp03/tools/brain_eQTL/eqtlfile/transcrossmap-selectNonCrossMapping.py \
+python /groups/umcg-biogen/tmp01/tools/brain_eQTL/eqtlfile/transcrossmap-selectNonCrossMapping.py \
 		$indir/eQTLs.txt.gz \
 		"$workdir/$dateprefix-eQTLCrossMap-5mb-35bp.txt.gz" \
 		0.05 \
@@ -82,7 +82,7 @@ lnct=$(zcat $fdrdir/eQTLs.txt.gz | wc -l)
 lnct=$(($lnct - 1))
 
 # repeat FDR calculation
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar \
 	--mode util \
 	--fdr \
 	--fdrmethod full \

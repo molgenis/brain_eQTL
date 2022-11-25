@@ -13,17 +13,17 @@ fdrref=$3
 
 #if [ 1 -eq 2 ]; then
 # calculate MAF
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --getmaffromqclog \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --getmaffromqclog \
         --in $dumpdir/SNPQCLog.txt.gz \
         --out $dumpdir/SNPQCLog-MAF.txt.gz
 
 # sort by Z
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --sortfile \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --sortfile \
 	--in $dumpdir/eQTLDump.txt.gz \
 	--out $dumpdir/eQTLDump-sortZ.txt.gz
 
 # apply FDR
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/BinaryMetaAnalyzer-1.0.14-SNAPSHOT-jar-with-dependencies.jar --applyfdr \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/BinaryMetaAnalyzer-1.0.14-SNAPSHOT-jar-with-dependencies.jar --applyfdr \
 	--in $dumpdir/eQTLDump-sortZ.txt.gz \
 	--out $dumpdir/eQTLDump-sortZ-FDR \
 	--eqtls $fdrref
@@ -31,14 +31,14 @@ java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/BinaryMetaAnalyzer-1.0.14-SNAP
 
 mkdir $dumpdir/splitByChr/
 # sort by position
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --sorteqtlfilebypos \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --sorteqtlfilebypos \
         --in $dumpdir/eQTLDump-sortZ-FDR.txt.gz \
         --out $dumpdir/eQTLDump-sortPos-FDR.txt.gz
 
 #fi
 
 # split by chr
-java -Xmx10g -jar /groups/umcg-biogen/tmp03/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --spliteqtlfilebychr \
+java -Xmx10g -jar /groups/umcg-biogen/tmp01/tools/eqtl-mapping-pipeline-1.4.8-SNAPSHOT/eqtl-mapping-pipeline.jar --mode util --spliteqtlfilebychr \
         --in $dumpdir/eQTLDump-sortPos-FDR.txt.gz \
         --out $dumpdir/splitByChr/$outprefix
 

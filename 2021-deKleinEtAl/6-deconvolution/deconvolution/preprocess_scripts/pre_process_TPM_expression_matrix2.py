@@ -3,7 +3,7 @@
 """
 File:         pre_process_TPM_expression_matrix.py
 Created:      2021/11/23
-Last Changed: 2022/02/09
+Last Changed: 2022/10/18
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -359,7 +359,8 @@ class main():
         print("Step 10: Construct correction matrix.")
         ram_df = None
         if self.rna_alignment_path is not None:
-            ram_df = self.load_file(self.rna_alignment_path, header=0,
+            ram_df = self.load_file(self.rna_alignment_path,
+                                    header=0,
                                     index_col=0)
             ram_df = ram_df.loc[:, samples].T
 
@@ -463,7 +464,7 @@ class main():
             ram_df_subset_df = self.remove_multicollinearity(ram_df_subset_df.loc[:, ram_df_subset_df.std(axis=0) != 0])
 
             # Merge with correction data frame.
-            correction_df = ram_df_subset_df.merge(ram_df_subset_df, left_index=True, right_index=True)
+            correction_df = correction_df.merge(ram_df_subset_df, left_index=True, right_index=True)
 
         # Add intercept.
         correction_df.insert(0, "INTERCEPT", 1)
@@ -626,10 +627,10 @@ class main():
                 # Add color
                 hue = None
                 palette = None
-                if sa_df is not None:
-                    hue = sa_df.columns[0]
+                if std_df is not None:
+                    hue = std_df.columns[0]
                     palette = self.palette
-                    plot_df = plot_df.merge(sa_df, left_index=True, right_index=True)
+                    plot_df = plot_df.merge(std_df, left_index=True, right_index=True)
 
                 # set order.
                 plot_df["x"] = df[pi].argsort()
@@ -650,7 +651,7 @@ class main():
             else:
                 ax.set_axis_off()
 
-                if sa_df is not None and self.palette is not None and i == (nplots - 1):
+                if std_df is not None and self.palette is not None and i == (nplots - 1):
                     handles = []
                     for key, value in self.palette.items():
                         if key in groups_present:
