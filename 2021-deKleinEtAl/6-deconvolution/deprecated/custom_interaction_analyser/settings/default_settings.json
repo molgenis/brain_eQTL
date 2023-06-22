@@ -1,0 +1,20 @@
+{
+  "input_dir": "",
+  "filenames": {
+    "genotype":  "",
+    "expression": "",
+    "technical_covariates": "",
+    "covariates": ""
+  },
+  "correct_for_snp_tech_cov_interaction": true,
+  "covariates_folder": "covariates",
+  "real_pvalues_pickle_filename": "pvalue_data",
+  "coef_pickle_filename": "coef_data",
+  "std_err_pickle_filename": "std_err_data",
+  "tvalue_pickle_filename": "tvalue_data",
+  "permutations_order_pickle_filename": "permutation_order",
+  "permuted_pvalues_pickle_filename": "perm_pvalues",
+  "n_permutations": 0,
+  "max_runtime_in_hours": 6,
+  "panic_time_in_min": 10
+}

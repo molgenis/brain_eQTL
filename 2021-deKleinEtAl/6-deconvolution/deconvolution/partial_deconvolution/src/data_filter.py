@@ -1,7 +1,7 @@
 """
 File:         data_filter.py
 Created:      2020/09/04
-Last Changed: 2020/11/19
+Last Changed: 2021/08/04
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -25,70 +25,53 @@ from __future__ import print_function
 
 # Third party imports.
 import pandas as pd
+import numpy as np
 
 # Local application imports.
 
 
 class DataFilter:
     def __init__(self, settings, raw_expression):
-        self.sample_annotation_path = settings.get_sample_annotation_path()
-        self.sample_id = settings.get_sample_id()
+        self.sample_to_dataset_path = settings.get_sample_to_dataset_path()
         self.sample_filter_path = settings.get_sample_filter_path()
-        self.cohort_id = settings.get_cohort_id()
-        self.cohort_filter = settings.get_cohort_filter()
-        self.annotation_id = settings.get_annotation_id()
-        self.annotation_filter = settings.get_annotation_filter()
-        self.cohort_corr = settings.get_cohort_corr()
+        self.dataset_filter = settings.get_dataset_filter()
+        self.dataset_correction = settings.get_dataset_correction()
         self.raw_expression = raw_expression
 
-        self.sample_annotation = None
-        self.expression = None
-        self.cohorts = None
+        self.sample_to_dataset_dict = None
+        self.filtered_expression = None
+        self.datasets = None
+        self.reference_dataset = None
 
     def work(self):
-        # Load the sample annotation file
-        self.sample_annotation = self.load_sample_annotation()
+        # Load the sample to dataset file and sample filter file.
+        std_df = self.load_sample_to_dataset_file()
+        sample_filter = self.load_sample_filter()
+
+        self.set_sample_to_dataset_dict(std_df=std_df)
+
+        # Construct list of requested samples.
+        incl_samples = list(std_df.iloc[:, 0].values)
+        if self.dataset_filter is not None:
+            incl_samples = list(std_df.loc[std_df.iloc[:, 1].isin(self.dataset_filter), std_df.columns[0]].values)
+        if sample_filter is not None:
+            incl_samples = [x for x in incl_samples if x in sample_filter]
 
         # Filter the expression.
-        self.expression = self.filter_expression_data(self.raw_expression)
+        self.filtered_expression = self.raw_expression.loc[:, incl_samples]
 
         # Create the cohorts matrix.
-        if self.cohort_corr:
-            self.cohorts = self.create_cohorts_matrix()
+        if self.dataset_correction:
+            self.datasets = self.create_datasets_df(std_df=std_df)
+            self.reference_dataset = self.datasets.columns[0]
 
-    def load_sample_annotation(self):
+    def load_sample_to_dataset_file(self):
         print("Loading samples annotation")
-        return pd.read_csv(self.sample_annotation_path,
+        return pd.read_csv(self.sample_to_dataset_path,
+                           header=0,
+                           index_col=None,
                            sep="\t",
                            low_memory=False)
-
-    def get_translate_dict(self, value, key=None):
-        if key is None:
-            key = self.sample_id
-        if self.sample_annotation is None or value is None:
-            return None
-
-        return dict(zip(self.sample_annotation.loc[:, key],
-                        self.sample_annotation.loc[:, value]))
-
-    def filter_expression_data(self, raw_expression):
-        print("Filtering expression data")
-
-        sample_filter = self.load_sample_filter()
-        cohort_dict = self.get_translate_dict(key=self.sample_id,
-                                              value=self.cohort_id)
-        annotation_dict = self.get_translate_dict(key=self.sample_id,
-                                                  value=self.annotation_id)
-
-        include = []
-        for sample in raw_expression.columns:
-            if (sample_filter is None or sample in sample_filter) and \
-                (cohort_dict is None or sample in cohort_dict.keys()) and \
-                (cohort_dict is None or self.cohort_filter is None or str(cohort_dict[sample]).upper() in self.cohort_filter) and \
-                    (annotation_dict is None or self.annotation_filter is None or str(annotation_dict[sample]).upper() in self.annotation_filter):
-                include.append(sample)
-
-        return raw_expression.loc[:, include]
 
     def load_sample_filter(self):
         print("Loading sample filter")
@@ -100,44 +83,48 @@ class DataFilter:
                              nrows=1)
             return list(df.columns)
 
-    def create_cohorts_matrix(self):
-        print("Creating cohort matrix.")
+    @staticmethod
+    def create_datasets_df(std_df):
+        print("Creating datasets data frame.")
 
-        sample_to_cohort_dict = self.get_translate_dict(key=self.sample_id,
-                                                        value=self.cohort_id)
+        dataset_sample_counts = list(zip(*np.unique(std_df.iloc[:, 1], return_counts=True)))
+        dataset_sample_counts.sort(key=lambda x: -x[1])
+        datasets = [csc[0] for csc in dataset_sample_counts]
 
-        cohort_to_sample_dict = {}
-        for sample in self.expression.columns:
-            cohort = sample_to_cohort_dict[sample]
-            if cohort in cohort_to_sample_dict.keys():
-                value = cohort_to_sample_dict[cohort]
-                value.append(sample)
-                cohort_to_sample_dict[cohort] = value
-            else:
-                cohort_to_sample_dict[cohort] = [sample]
+        samples = list(std_df.iloc[:, 0].values)
 
-        cohort_df = pd.DataFrame(0,
-                                 index=sample_to_cohort_dict.keys(),
-                                 columns=cohort_to_sample_dict.keys())
-        for cohort in cohort_df.columns:
-            cohort_df.loc[cohort_df.index.isin(cohort_to_sample_dict[cohort]), cohort] = 1
+        dataset_df = pd.DataFrame(0, index=samples, columns=datasets)
+        for dataset in datasets:
+            dataset_df.loc[std_df.loc[std_df.iloc[:, 1] == dataset, std_df.columns[0]], dataset] = 1
+        dataset_df.index.name = "-"
 
-        return cohort_df
+        return dataset_df
 
-    def get_expression(self):
-        return self.expression
+    def set_sample_to_dataset_dict(self, std_df):
+        self.sample_to_dataset_dict = dict(zip(std_df.iloc[:, 0], std_df.iloc[:, 1]))
 
-    def get_cohorts(self):
-        return self.cohorts
+    def get_sample_to_dataset_dict(self):
+        return self.sample_to_dataset_dict
+
+    def get_filtered_expression(self):
+        return self.filtered_expression
+
+    def get_datasets(self):
+        return self.datasets
 
     def get_shape_diff(self):
-        return self.raw_expression.shape[0] - self.expression.shape[0], self.raw_expression.shape[1] - self.expression.shape[1]
+        return self.raw_expression.shape[0] - self.filtered_expression.shape[0], self.raw_expression.shape[1] - self.filtered_expression.shape[1]
+
+    def get_reference_dataset(self):
+        return self.reference_dataset
 
     def print_info(self):
         print("Pre-filter shape:")
         print("\t{} rows and {} columns".format(self.raw_expression.shape[0], self.raw_expression.shape[1]))
         print("Post-filter shape:")
-        print("\t{} rows and {} columns".format(self.expression.shape[0], self.expression.shape[1]))
+        print("\t{} rows and {} columns".format(self.filtered_expression.shape[0], self.filtered_expression.shape[1]))
         print("Shape difference:")
         print("\t{} rows and {} columns".format(self.get_shape_diff()[0], self.get_shape_diff()[1]))
+        if self.dataset_correction:
+            print("Reference dataset = {}".format(self.datasets.columns[0]))
         print("")

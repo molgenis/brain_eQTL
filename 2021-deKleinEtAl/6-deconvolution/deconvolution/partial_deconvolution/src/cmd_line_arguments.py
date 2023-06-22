@@ -1,7 +1,7 @@
 """
 File:         cmd_line_arguments.py
 Created:      2020/06/29
-Last Changed: 2020/09/04
+Last Changed: 2020/11/22
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -64,7 +64,8 @@ class CommandLineArguments:
         parser.add_argument("-t",
                             "--translate",
                             type=str,
-                            required=True,
+                            required=False,
+                            default=None,
                             help="The path to the gene to ensembl ID translate "
                                  "file.")
         parser.add_argument("-g",
@@ -80,17 +81,11 @@ class CommandLineArguments:
                             default="output",
                             help="The name of the output directory. " \
                                  "Default: 'output'.")
-        parser.add_argument("-sa",
-                            "--sample_annotation",
+        parser.add_argument("-std",
+                            "--sample_to_dataset",
                             type=str,
-                            required=True,
-                            help="The path to the sample annotation file.")
-        parser.add_argument("-sid",
-                            "--sample_id",
-                            type=str,
-                            required=True,
-                            help="The sample column name in the -sa / "
-                                 "--sample_annotation file.")
+                            required=False,
+                            help="The path to the sample-to-dataset matrix.")
         parser.add_argument("-sf",
                             "--sample_filter",
                             type=str,
@@ -98,33 +93,13 @@ class CommandLineArguments:
                             help="A path to a file containing which first line "
                                  "(tab seperated) contains the sample "
                                  "identifiers to include.")
-        parser.add_argument("-cid",
-                            "--cohort_id",
-                            type=str,
-                            required=True,
-                            help="The cohort column name in the -sa / "
-                                 "--sample_annotation file.")
-        parser.add_argument("-cf",
-                            "--cohort_filter",
+        parser.add_argument("-df",
+                            "--dataset_filter",
                             type=str,
                             nargs="+",
                             required=False,
                             default=None,
-                            help="The name of the cohort(s) to include, "
-                                 "default: include all. (space = _)")
-        parser.add_argument("-aid",
-                            "--annotation_id",
-                            type=str,
-                            required=False,
-                            help="The annotation column name in the -sa / "
-                                 "--sample_annotation file.")
-        parser.add_argument("-af",
-                            "--annotation_filter",
-                            type=str,
-                            nargs="+",
-                            required=False,
-                            default=None,
-                            help="The annotation labels to include, "
+                            help="The name of the dataset(s) to include, "
                                  "default: include all. (space = _)")
         parser.add_argument("-os",
                             "--outsubdir",
@@ -138,9 +113,9 @@ class CommandLineArguments:
                             default=0,
                             help="The minimal expression value per gene."
                                  " Default: 0.")
-        parser.add_argument("-cohort_corr",
+        parser.add_argument("-dataset_correction",
                             action='store_true',
-                            help="Correct for cohort biases in the expression."
+                            help="Correct for dataset means in the expression."
                                  " Default: False.")
         parser.add_argument("-n",
                             "--normalize",
@@ -156,10 +131,6 @@ class CommandLineArguments:
         parser.add_argument("-log2",
                             action='store_true',
                             help="Log2 transform the profile values."
-                                 " Default: False.")
-        parser.add_argument("-sum_to_one",
-                            action='store_true',
-                            help="Sum-to-one the deconvolution weights."
                                  " Default: False.")
         parser.add_argument("-dm",
                             "--decon_method",

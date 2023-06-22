@@ -1,7 +1,7 @@
 """
 File:         combine_eqtlprobes.py
-Created:      2020/03/12
-Last Changed: 2020/06/03
+Created:      2020/10/08
+Last Changed: 2021/07/08
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -26,27 +26,16 @@ import os
 import pandas as pd
 
 # Local application imports.
-from general.utilities import prepare_output_dir, check_file_exists
-from general.df_utilities import load_dataframe, save_dataframe
+from utilities import prepare_output_dir, check_file_exists, load_dataframe, save_dataframe
 
 
 class CombineEQTLProbes:
-    def __init__(self, settings, disease, force, outdir):
-        """
-        The initializer for the class.
-
-        :param settings: string, the settings.
-        :param disease: string, the name of the disease to analyse.
-        :param force: boolean, whether or not to force the step to redo.
-        :param outdir: string, the output directory.
-        """
+    def __init__(self, settings, log, force, outdir):
         self.indir = settings["input_directory"]
         self.iter_dirname = settings["iteration_dirname"]
         self.in_filename = settings["in_filename"]
         self.n_iterations = settings["iterations"]
-        self.snp_to_gwasid_filename = settings["snp_to_gwasid_filename"]
-        self.gwasid_to_trait_filename = settings["gwasid_to_trait_filename"]
-        self.disease = disease
+        self.log = log
         self.force = force
 
         # Prepare an output directory.
@@ -55,33 +44,28 @@ class CombineEQTLProbes:
         self.outpath = os.path.join(self.outdir, "eQTLprobes_combined.txt.gz")
 
         # Declare variables.
-        self.eqtl_probes = None
+        self.eqtl_df = None
 
     def start(self):
-        print("Starting combining eQTL probe files.")
+        self.log.info("Starting combining eQTL probe files.")
         self.print_arguments()
 
         # Check if output file exist.
-        if check_file_exists(self.outpath) and not self.force:
-            print("Skipping step, loading result.")
-            self.eqtl_probes = load_dataframe(inpath=self.outpath, header=0,
-                                              index_col=False)
-        else:
+        if not check_file_exists(self.outpath) or self.force:
             # Load each GTE file.
-            print("Loading eQTLprobes files.")
-            combined_eqtl_probes = self.combine_files()
-            if self.disease != "" and self.disease is not None:
-                print("Filtering on trait: {}".format(self.disease))
-                combined_eqtl_probes = self.filter_on_trait(combined_eqtl_probes)
-            self.eqtl_probes = combined_eqtl_probes
+            self.log.info("Loading eQTLprobes files.")
+            self.eqtl_df = self.combine_files()
             self.save()
+        else:
+            self.log.info("Skipping step.")
 
     def combine_files(self):
         combined = None
         for i in range(1, self.n_iterations+1):
             infile = os.path.join(self.indir, self.iter_dirname + str(i),
                                   self.in_filename)
-            df = load_dataframe(inpath=infile, header=0, index_col=False)
+            df = load_dataframe(inpath=infile, header=0, index_col=False,
+                                logger=self.log)
             df["Iteration"] = i
             if combined is None:
                 combined = df
@@ -93,50 +77,11 @@ class CombineEQTLProbes:
 
         return combined
 
-    def filter_on_trait(self, df):
-        tmp1 = load_dataframe(inpath=self.gwasid_to_trait_filename, header=0,
-                              index_col=False)
-        gwas_to_trait = pd.Series(tmp1["Trait"].values, index=tmp1["ID"]).to_dict()
-        del tmp1
-
-        gwas_map = {}
-        disease_map = {}
-        tmp2 = load_dataframe(inpath=self.snp_to_gwasid_filename, header=0,
-                              index_col=False, low_memory=False)
-
-        for index, row in tmp2.iterrows():
-            rs = row["RsID"]
-            id = row["ID"]
-
-            gwasses = gwas_map.get(rs)
-            if gwasses is None:
-                gwasses = id
-            else:
-                gwasses = "{}, {}".format(gwasses, id)
-            gwas_map[rs] = gwasses
-
-            diseases = disease_map.get(rs)
-            if id in gwas_to_trait.keys():
-                trait = gwas_to_trait.get(id)
-                if diseases is None:
-                    diseases = trait
-                else:
-                    diseases = "{}, {}".format(diseases, trait)
-            disease_map[rs] = diseases
-
-        df["GWASIDS"] = df["SNPName"].map(gwas_map, na_action="")
-        df["Trait"] = df["SNPName"].map(disease_map, na_action="")
-
-        # Subset.
-        df.dropna(subset=['Trait'], inplace=True)
-        df = df[df['Trait'].str.contains(self.disease, case=False)]
-        df.reset_index(drop=True, inplace=True)
-
-        return df
-
     def save(self):
-        save_dataframe(df=self.eqtl_probes, outpath=self.outpath,
-                       index=False, header=True)
+        save_dataframe(df=self.eqtl_df, outpath=self.outpath,
+                       index=False, header=True, logger=self.log)
+        save_dataframe(df=self.eqtl_df.loc[:, ["ProbeName", "SNPName"]], outpath=os.path.join(self.outdir, "snp_gene_list.txt"),
+                       index=False, header=True, logger=self.log)
 
     def clear_variables(self):
         self.indir = None
@@ -148,15 +93,18 @@ class CombineEQTLProbes:
     def get_outpath(self):
         return self.outpath
 
-    def get_eqtlprobes(self):
-        return self.eqtl_probes
+    def get_eqtl_file(self):
+        return self.outpath
+
+    def get_eqtl_df(self):
+        return self.eqtl_df
 
     def print_arguments(self):
-        print("Arguments:")
-        print("  > Input directory: {}".format(self.indir))
-        print("  > Iteration directory: {}".format(self.iter_dirname))
-        print("  > N. Iterations: {}".format(self.n_iterations))
-        print("  > Input filename: {}".format(self.in_filename))
-        print("  > Output path: {}".format(self.outpath))
-        print("  > Force: {}".format(self.force))
-        print("")
+        self.log.info("Arguments:")
+        self.log.info("  > Input directory: {}".format(self.indir))
+        self.log.info("  > Iteration directory: {}".format(self.iter_dirname))
+        self.log.info("  > N. Iterations: {}".format(self.n_iterations))
+        self.log.info("  > Input filename: {}".format(self.in_filename))
+        self.log.info("  > Output path: {}".format(self.outpath))
+        self.log.info("  > Force: {}".format(self.force))
+        self.log.info("")

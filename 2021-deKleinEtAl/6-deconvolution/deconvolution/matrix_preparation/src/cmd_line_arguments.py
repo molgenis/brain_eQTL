@@ -1,7 +1,7 @@
 """
 File:         cmd_line_arguments.py
-Created:      2020/03/12
-Last Changed: 2020/06/10
+Created:      2020/10/08
+Last Changed: 2020/10/27
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -29,18 +29,7 @@ import argparse
 
 
 class CommandLineArguments:
-    """
-    CommandLineArguments: class that processing command line arguments.
-    """
-
     def __init__(self, program, version, description):
-        """
-        Initializer method.
-
-        :param program: string, name of the program.
-        :param version: float, the version of the program.
-        :param description: string, description of the program.
-        """
         # Safe variables.
         self.program = program
         self.version = version
@@ -49,14 +38,9 @@ class CommandLineArguments:
         # Get the arguments.
         parser = self.create_argument_parser()
         self.arguments = parser.parse_args()
-        self.print()
+        self.print_arguments()
 
     def create_argument_parser(self):
-        """
-        Function to create the command line flags.
-
-        :return: parser object,
-        """
         parser = argparse.ArgumentParser(prog=self.program,
                                          description=self.description)
 
@@ -78,13 +62,6 @@ class CommandLineArguments:
                             default="default_settings",
                             help="The settings input file (without '.json'), "
                                  "default: 'default_settings'.")
-        parser.add_argument("-d",
-                            "--disease",
-                            nargs="+",
-                            type=str,
-                            default="",
-                            help="The name of the disease to filter on,"
-                                 "default: '' (i.e. no filter).")
         parser.add_argument("-f",
                             "--force_steps",
                             nargs="+",
@@ -93,37 +70,38 @@ class CommandLineArguments:
                             choices=["all",
                                      "combine_gte_files",
                                      "combine_eqtlprobes",
+                                     "create_cohort_matrix",
                                      "create_matrices",
-                                     "create_deconvolution_matrices",
+                                     "correct_cohort_effects",
                                      "perform_deconvolution",
-                                     "perform_celltype_factorization",
-                                     "create_cov_matrix",
-                                     "mask_matrices",
-                                     "create_groups",
-                                     "create_regression_matrix"],
+                                     "cerate_tech_covs_matrix",
+                                     "create_covs_matrix",
+                                     "create_extra_covs_matrix",
+                                     "normal_transform_matrix"],
                             help="The steps to force the program to redo, "
-                                 "default: None.")
+                                 "default: None. Note, all dependend steps"
+                                 "are forced too.")
+        parser.add_argument("-ecm",
+                            "--extra_cov_matrix",
+                            type=str,
+                            default=None,
+                            help="The path to matrices to prepare as"
+                                 "additional covariate matrix. Note: assumes"
+                                 "tab separated with header and index."
+                                 "Default: None.")
+        parser.add_argument("-clear_log",
+                            action='store_true',
+                            help="Clear already existing log files. default: "
+                                 "'False'.")
 
         return parser
 
-    def print(self):
-        """
-        Method that prints the input settings.
-
-        :return:
-        """
+    def print_arguments(self):
         for arg in vars(self.arguments):
             print("Input argument '{}' "
                   "has value '{}'.".format(arg, getattr(self.arguments, arg)))
 
     def get_argument(self, arg_key):
-        """
-        Method to return the value of a command line key.
-
-        :param arg_key: str, key in parse command line
-        :return: int/str/dict, value of arg_key. If the key did not
-                 exist, return None.
-        """
         if self.arguments is not None and arg_key in self.arguments:
             value = getattr(self.arguments, arg_key)
         else:
@@ -132,10 +110,4 @@ class CommandLineArguments:
         return value
 
     def get_all_arguments(self):
-        """
-        Method to return all command line arguments.
-
-        :return self.arguments: dict, dictionary containing all command
-                line arguments.
-        """
         return self.arguments

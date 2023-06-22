@@ -1,7 +1,7 @@
 """
 File:         perform_deconvolution.py
 Created:      2020/06/29
-Last Changed: 2020/09/04
+Last Changed: 2021/09/30
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -27,6 +27,7 @@ import os
 # Third party imports.
 from scipy.optimize import nnls
 import pandas as pd
+import numpy as np
 
 # Local application imports.
 
@@ -34,13 +35,14 @@ import pandas as pd
 class PerformDeconvolution:
     def __init__(self, settings, signature, expression):
         self.decon_method = settings.get_decon_method()
-        self.sum_to_one = settings.get_sum_to_one()
         self.outdir = settings.get_outsubdir_path()
         self.signature = signature
         self.expression = expression
 
+        self.deconvolution_raw = None
         self.deconvolution = None
-        self.residuals = None
+        self.rss = None
+        self.recon_accuracy = None
 
     def work(self):
         print("Performing deconvolution using '{}'".format(self.decon_method))
@@ -52,30 +54,49 @@ class PerformDeconvolution:
             exit()
 
         decon_data = []
-        residuals_data = []
+        rss_data = []
+        recon_accuracy_data = []
         for index, sample in self.expression.T.iterrows():
+            # Model.
             proportions, rnorm = decon_function(self.signature, sample)
-            decon_data.append(proportions)
-            residuals_data.append(rnorm)
 
-        deconvolution = pd.DataFrame(decon_data,
-                                     index=self.expression.columns,
-                                     columns=self.signature.columns)
-        residuals = pd.Series(residuals_data,
-                              index=self.expression.columns)
+            # Calculate reconstruction accuracy.
+            recon_accuracy = self.calc_reconstruction_accuracy(y=sample,
+                                                               X=self.signature,
+                                                               betas=proportions)
+
+            # Save
+            decon_data.append(proportions)
+            rss_data.append(rnorm * rnorm)
+            recon_accuracy_data.append(recon_accuracy)
+
+        deconvolution_raw = pd.DataFrame(decon_data,
+                                         index=self.expression.columns,
+                                         columns=self.signature.columns)
+        rss = pd.Series(rss_data, index=self.expression.columns)
+        recon_accuracy = pd.Series(recon_accuracy_data, index=self.expression.columns)
 
         # Make weights sum up to one.
-        if self.sum_to_one:
-            deconvolution = self.perform_sum_to_one(deconvolution)
+        deconvolution = self.perform_sum_to_one(deconvolution_raw)
 
         # Save.
+        self.deconvolution_raw = deconvolution_raw
         self.deconvolution = deconvolution
-        self.residuals = residuals
+        self.rss = rss
+        self.recon_accuracy = recon_accuracy
         self.save()
 
     @staticmethod
     def nnls(A, b):
         return nnls(A, b)
+
+    @staticmethod
+    def calc_reconstruction_accuracy(y, X, betas):
+        y_hat = np.dot(X, betas)
+        residuals = y - y_hat
+        residuals_norm = np.linalg.norm(residuals)
+        y_hat_norm = np.linalg.norm(y)
+        return 1 - (residuals_norm * residuals_norm) / (y_hat_norm * y_hat_norm)
 
     @staticmethod
     def perform_sum_to_one(X):
@@ -85,11 +106,17 @@ class PerformDeconvolution:
     def get_deconvolution(self):
         return self.deconvolution
 
-    def get_residuals(self):
-        return self.residuals
+    def get_rss(self):
+        return self.rss
 
-    def get_avg_residuals(self):
-        return self.residuals.mean()
+    def get_recon_accuracy(self):
+        return self.recon_accuracy
+
+    def get_avg_rss(self):
+        return self.rss.mean()
+
+    def get_avg_recon_accuracy(self):
+        return self.recon_accuracy.mean()
 
     def get_info_per_celltype(self):
         means = self.deconvolution.mean(axis=0).to_dict()
@@ -101,6 +128,14 @@ class PerformDeconvolution:
         return info
 
     def save(self):
+        self.deconvolution_raw.to_csv(os.path.join(self.outdir, 'deconvolution_raw.txt.gz'),
+                                      compression="gzip",
+                                      sep="\t",
+                                      header=True,
+                                      index=True)
+        print("\tsaved dataframe: deconvolution_raw.txt.gz "
+              "with shape: {}".format(self.deconvolution.shape))
+
         self.deconvolution.to_csv(os.path.join(self.outdir, 'deconvolution.txt.gz'),
                                   compression="gzip",
                                   sep="\t",
@@ -110,7 +145,8 @@ class PerformDeconvolution:
               "with shape: {}".format(self.deconvolution.shape))
 
     def print_info(self):
-        print("Average residuals: {:.2f}".format(self.get_avg_residuals()))
+        print("Average RSS: {:.2f}".format(self.get_avg_rss()))
+        print("Average reconstruction accuracy: {:.2f}%".format(self.get_avg_recon_accuracy()))
         print("Average weights per celltype:")
         for celltype, (mean, std) in self.get_info_per_celltype().items():
             print("\t{:20s}: mean = {:.2f} std = {:.2f}".format(celltype, mean, std))

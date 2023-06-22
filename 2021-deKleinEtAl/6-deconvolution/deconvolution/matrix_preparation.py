@@ -2,8 +2,8 @@
 
 """
 File:         matrix_preparation.py
-Created:      2020/03/12
-Last Changed: 2020/06/05
+Created:      2020/10/08
+Last Changed: 2020/10/20
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -22,6 +22,11 @@ A copy of the GNU General Public License can be found in the LICENSE file in the
 root directory of this source tree. If not, see <https://www.gnu.org/licenses/>.
 """
 
+"""
+Syntax:
+./matrix_preparation.py -h
+"""
+
 # Standard imports.
 
 # Third party imports.
@@ -34,7 +39,7 @@ from matrix_preparation.src.cmd_line_arguments import CommandLineArguments
 __program__ = "Matrix Preparation"
 __author__ = "Martijn Vochteloo"
 __maintainer__ = "Martijn Vochteloo"
-__email__ = "m.vochteloo@st.hanze.nl"
+__email__ = "m.vochteloo@rug.nl"
 __license__ = "GPLv3"
 __version__ = 1.0
 __description__ = "{} is a program developed and maintained by {}. " \
@@ -50,12 +55,14 @@ if __name__ == '__main__':
                                description=__description__)
     NAME = CLA.get_argument("name")
     SETTINGS_FILE = CLA.get_argument("settings")
-    DISEASE = ' '.join(CLA.get_argument("disease"))
     FORCE_STEPS = CLA.get_argument("force_steps")
+    EXTRA_COV_MATRIX = CLA.get_argument("extra_cov_matrix")
+    CLEAR_LOG = CLA.get_argument("clear_log")
 
     # Start the program.
     PROGRAM = Main(name=NAME,
                    settings_file=SETTINGS_FILE,
-                   disease=DISEASE,
-                   force_steps=FORCE_STEPS)
+                   force_steps=FORCE_STEPS,
+                   extra_cov_matrix=EXTRA_COV_MATRIX,
+                   clear_log=CLEAR_LOG)
     PROGRAM.start()

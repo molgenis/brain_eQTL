@@ -1,61 +1,45 @@
 {
   "combine_gte_files": {
     "input_directory": "",
-    "filename_regex": ""
+    "filename_regex": "",
+    "exclude_files": [],
+    "exclude_samples": ""
   },
   "combine_eqtlprobes": {
     "input_directory": "",
     "iteration_dirname": "",
     "in_filename": "",
-    "iterations": 1,
-    "snp_to_gwasid_filename": "",
-    "gwasid_to_trait_filename": ""
+    "iterations": 1
+  },
+  "create_dataset_matrix": {
   },
   "create_matrices": {
     "genotype_datafile": "",
-    "expression_datafile": ""
+    "expression_datafile": "",
+    "signature_datafile": "",
+    "gene_translate": {
+      "datafile": "",
+      "ENSG_column": "",
+      "HGNC_column": ""
+    },
+    "deconvolution_expr_datafile": ""
   },
-  "create_deconvolution_matrices": {
-    "decon_expression_datafile": "",
-    "celltype_profile_datafile": "",
-    "translate_datafile": "",
-    "marker_genes_suffix": "",
-    "marker_dict": {
-      "CellTypeA": [
-        "MarkerGeneA",
-        "..."
-      ],
-      "...": [
-        "MarkerGeneB",
-        "..."
-      ]
-    }
-  },
-  "perform_celltype_factorization": {
+  "correct_dataset_effects": {
   },
   "perform_deconvolution": {
-    "sample_cohort_datafile": {
-      "sample": "",
-      "cohort": ""
-    }
+    "min_expr_cutoff": 0
   },
-  "create_cov_matrix": {
-    "covariate_datafile": "",
-    "technical_covariates": [],
-    "cohorts": [],
-    "reference_cohort": "",
-    "phenotype_datafile": "",
+  "create_correction_matrix": {
+    "tech_covariates_datafile": "",
+    "mds_datafile": "",
+    "technical_covariates": []
+  },
+  "create_covs_matrix": {
     "eigenvectors_datafile": "",
-    "num_eigenvectors": 50,
-    "eigenvectors_before_cov_corr_datafile": ""
+    "num_eigenvectors": 50
   },
-  "mask_matrices": {
+  "create_extra_covs_matrix": {
   },
-  "create_groups": {
-    "min_eqtl_in_group": 10,
-    "min_samples_in_group": 10
-  },
-  "create_regression_matrix": {
-
+  "normal_transform_matrix": {
   }
 }

@@ -1,7 +1,7 @@
 """
 File:         visualiser.py
 Created:      2020/06/29
-Last Changed: 2020/12/15
+Last Changed: 2021/10/19
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -28,6 +28,7 @@ import os
 import scipy.cluster.hierarchy as sch
 from scipy import stats
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib
 matplotlib.use('Agg')
@@ -40,7 +41,9 @@ import matplotlib.patches as mpatches
 class Visualiser:
     def __init__(self, settings, signature, expression, deconvolution,
                  ground_truth, comparison):
-        self.outdir = settings.get_outsubdir_path()
+        self.outdir = os.path.join(settings.get_outsubdir_path(), "plot")
+        if not os.path.exists(self.outdir):
+            os.makedirs(self.outdir)
         self.extension = settings.get_extension()
         self.title = settings.get_title()
         self.subtitle = settings.get_subtitle()
@@ -50,15 +53,53 @@ class Visualiser:
         self.deconvolution = deconvolution
         self.ground_truth = ground_truth
         self.comparison = comparison
-        self.order = self.set_order()
+        order = self.set_order()
+        if order is None:
+            order = [x for x in range(self.signature.shape[0])]
+        self.order = order
         self.palette = {
+            "Excitatory": "#56B4E9",
+            "Inhibitory": "#0072B2",
             "Neuron": "#0072B2",
+            "OtherNeuron": "#2690ce",
             "Oligodendrocyte": "#009E73",
+            "OPC": "#009E73",
             "EndothelialCell": "#CC79A7",
+            "Endothelial": "#CC79A7",
             "Microglia": "#E69F00",
             "Macrophage": "#E69F00",
             "Astrocyte": "#D55E00",
-            "Pericytes": "#808080"
+            "Astrocytes": "#D55E00",
+            "Pericytes": "#808080",
+            "Microglia/Macrophage": "#E69F00",
+            "Excitatory/Neuron": "#56B4E9",
+            "Inhibitory/Neuron": "#0072B2",
+            "Excitatory+Inhibitory/Neuron": "#BEBEBE",
+            "-": "#000000",
+            'Adult-Ex1': '#56B4E9',
+            'Adult-Ex2': '#56B4E9',
+            'Adult-Ex3': '#56B4E9',
+            'Adult-Ex4': '#56B4E9',
+            'Adult-Ex5': '#56B4E9',
+            'Adult-Ex6': '#56B4E9',
+            'Adult-Ex7': '#56B4E9',
+            'Adult-Ex8': '#56B4E9',
+            'Adult-In1': '#0072B2',
+            'Adult-In2': '#0072B2',
+            'Adult-In3': '#0072B2',
+            'Adult-In4': '#0072B2',
+            'Adult-In5': '#0072B2',
+            'Adult-In6': '#0072B2',
+            'Adult-In7': '#0072B2',
+            'Adult-In8': '#0072B2',
+            'Adult-Microglia': '#E69F00',
+            'Adult-OPC': '#1b8569',
+            'Adult-Endothelial': '#CC79A7',
+            'Adult-Astrocytes': '#D55E00',
+            'Adult-Oligo': '#009E73',
+            'Adult-OtherNeuron': '#2690ce',
+            'Dev-Replicating': '#000000',
+            'Dev-Quiescent': '#808080'
         }
 
         # Set the right pdf font for exporting.
@@ -66,13 +107,116 @@ class Visualiser:
         matplotlib.rcParams['ps.fonttype'] = 42
 
     def set_order(self):
-        linkage = sch.linkage(self.signature)
-        deno = sch.dendrogram(linkage, orientation='right')
-        return deno['leaves']
+        order = None
+        try:
+            linkage = sch.linkage(self.signature)
+            deno = sch.dendrogram(linkage, orientation='right')
+            order = deno['leaves']
+        except RecursionError:
+            print("RecursionError: maximum recursion depth exceeded while getting the str of an object")
+            pass
+
+        return order
 
     def plot_profile_clustermap(self):
         df = self.signature.copy()
         self.create_clustermap(df.T, name='signature')
+
+    def plot_profile_correlations(self):
+        df = self.signature.copy()
+        correlation_m = np.corrcoef(df.T)
+        correlation_m[np.triu_indices(correlation_m.shape[0])] = np.nan
+        self.create_clustermap(pd.DataFrame(correlation_m, index=df.columns, columns=df.columns),
+                               vmin=-1,
+                               vmax=1,
+                               xticklabels=True,
+                               yticklabels=True,
+                               row_cluster=False,
+                               col_cluster=False,
+                               add_annot=True,
+                               name='signature_correlations')
+
+    def plot_profile_boxplot(self):
+        df = self.signature.copy()
+        dfm = df.melt()
+        self.create_boxplot(dfm, name='signature', order=df.columns.tolist())
+
+    def plot_deconvolution_clustermap(self):
+        df = self.deconvolution.copy()
+        self.create_clustermap(df.T, name='deconvolution')
+
+    def plot_deconvolution_correlations(self):
+        df = self.deconvolution.copy()
+        correlation_m = np.corrcoef(df.T)
+        correlation_m[np.triu_indices(correlation_m.shape[0])] = np.nan
+        self.create_clustermap(pd.DataFrame(correlation_m, index=df.columns, columns=df.columns),
+                               vmin=-1,
+                               vmax=1,
+                               xticklabels=True,
+                               yticklabels=True,
+                               row_cluster=False,
+                               col_cluster=False,
+                               add_annot=True,
+                               name='deconvolution_correlations')
+
+    def plot_deconvolution_per_sample(self, n=1):
+        sign_df = self.signature.copy()
+        expr_df = self.expression.copy()
+        decon_df = self.deconvolution.copy()
+
+        for i in range(n):
+            self.visualise_sample_deconvolution(X=sign_df,
+                                                y=expr_df.iloc[:, i],
+                                                coefficients=decon_df.iloc[i, :],
+                                                name=expr_df.columns[i])
+
+    def plot_deconvolution_distribution(self):
+        df = self.deconvolution.copy()
+        dfm = df.melt()
+        self.create_distribution(dfm, name='deconvolution')
+
+    def plot_deconvolution_boxplot(self):
+        df = self.deconvolution.copy()
+        dfm = df.melt()
+        self.create_boxplot(dfm, name='deconvolution', order=df.columns.tolist())
+
+    def plot_ground_truth_distribution(self):
+        if self.ground_truth is None:
+            return
+
+        df = self.ground_truth.copy()
+        dfm = df.melt()
+        self.create_distribution(dfm, name='ground_truth')
+
+    def plot_ground_truth_boxplot(self):
+        if self.ground_truth is None:
+            return
+
+        df = self.ground_truth.copy()
+        dfm = df.melt()
+        self.create_boxplot(dfm, name='ground_truth', order=df.columns.tolist())
+
+    def plot_prediction_comparison(self):
+        if self.comparison is None:
+            return
+
+        df = self.comparison.copy()
+        self.create_regression(df,
+                               "NNLS predictions",
+                               "{} counts".format(self.ground_truth_type),
+                               '{}_comparison'.format(self.ground_truth_type))
+
+    def plot_recon_accuracy_boxplot(self, s):
+        df = s.to_frame()
+        df.columns = ["-"]
+        dfm = df.melt()
+        self.create_boxplot(dfm, name='reconstruction_accuracy')
+
+    def plot_violin_comparison(self, label, trans_dict):
+        df = self.deconvolution.copy()
+        df = df.reset_index().melt(id_vars=["index"])
+        df[label] = df["index"].map(trans_dict).astype(str)
+        self.create_catplot(df, label)
 
     def plot_profile_stripplot(self, n=25):
         df = self.signature.copy()
@@ -118,26 +262,6 @@ class Visualiser:
         plt.tight_layout()
         fig.savefig(os.path.join(self.outdir, "profile_stripplot.{}".format(self.extension)))
         plt.close()
-
-    def plot_profile_boxplot(self):
-        df = self.signature.copy()
-        dfm = df.melt()
-        self.create_boxplot(dfm, name='signature')
-
-    def plot_deconvolution_clustermap(self):
-        df = self.deconvolution.copy()
-        self.create_clustermap(df.T, name='deconvolution')
-
-    def plot_deconvolution_per_sample(self, n=1):
-        sign_df = self.signature.copy()
-        expr_df = self.expression.copy()
-        decon_df = self.deconvolution.copy()
-
-        for i in range(n):
-            self.visualise_sample_deconvolution(X=sign_df,
-                                                y=expr_df.iloc[:, i],
-                                                coefficients=decon_df.iloc[i, :],
-                                                name=expr_df.columns[i])
 
     def visualise_sample_deconvolution(self, X, y, coefficients, name):
         X = X.iloc[self.order, :]
@@ -245,57 +369,27 @@ class Visualiser:
             os.path.join(self.outdir, "sample_{}_deconvolution.{}".format(name.lower(), self.extension)))
         plt.close()
 
-    def plot_deconvolution_distribution(self):
-        df = self.deconvolution.copy()
-        dfm = df.melt()
-        self.create_distribution(dfm, name='deconvolution')
+    def create_clustermap(self, df, name, xticklabels=False, yticklabels=True,
+                          row_cluster=True, col_cluster=True, vmin=None,
+                          vmax=None, add_annot=False):
+        annot = None
+        if add_annot:
+            annot = df.round(2)
 
-    def plot_deconvolution_boxplot(self):
-        df = self.deconvolution.copy()
-        dfm = df.melt()
-        self.create_boxplot(dfm, name='deconvolution')
-
-    def plot_ground_truth_distribution(self):
-        if self.ground_truth is None:
-            return
-
-        df = self.ground_truth.copy()
-        dfm = df.melt()
-        self.create_distribution(dfm, name='ground_truth')
-
-    def plot_ground_truth_boxplot(self):
-        if self.ground_truth is None:
-            return
-
-        df = self.ground_truth.copy()
-        dfm = df.melt()
-        self.create_boxplot(dfm, name='ground_truth')
-
-    def plot_prediction_comparison(self):
-        if self.comparison is None:
-            return
-
-        df = self.comparison.copy()
-        self.create_regression(df,
-                               "NNLS predictions",
-                               "{} counts".format(self.ground_truth_type),
-                               '{}_comparison'.format(self.ground_truth_type))
-
-    def plot_violin_comparison(self, label, trans_dict):
-        df = self.deconvolution.copy()
-        df = df.reset_index().melt(id_vars=["index"])
-        df[label] = df["index"].map(trans_dict).astype(str)
-        self.create_catplot(df, label)
-
-    def create_clustermap(self, df, name):
         sns.set(color_codes=True)
         g = sns.clustermap(df, center=0, cmap="RdBu_r",
-                           yticklabels=True, xticklabels=False,
+                           row_cluster=row_cluster, col_cluster=col_cluster,
+                           yticklabels=yticklabels, xticklabels=xticklabels,
+                           vmin=vmin, vmax=vmax, annot=annot,
+                           annot_kws={"size": 10},
                            dendrogram_ratio=(.1, .1),
-                           figsize=(12, 9))
-        plt.setp(
-            g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(),
-                                         fontsize=10))
+                           figsize=(12, 12))
+        if yticklabels:
+            plt.setp(g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize=10))
+
+        if xticklabels:
+            plt.setp(g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize=10))
+
         g.fig.subplots_adjust(bottom=0.05, top=0.7)
         plt.tight_layout()
         g.savefig(os.path.join(self.outdir, "{}_clustermap.{}".format(name, self.extension)))
@@ -314,19 +408,22 @@ class Visualiser:
         g.savefig(os.path.join(self.outdir, "{}_catplot.{}".format(name, self.extension)))
         plt.close()
 
-    def create_boxplot(self, df, xlabel="", ylabel="", name=""):
+    def create_boxplot(self, df, xlabel="", ylabel="", name="", order=None):
         sns.set(rc={'figure.figsize': (12, 9)})
         sns.set_style("ticks")
-        fig, ax = plt.subplots()
-        sns.despine(fig=fig, ax=ax)
-        sns.boxplot(x="variable", y="value", data=df, palette=self.palette, ax=ax)
-        ax.set_xlabel(xlabel,
-                      fontsize=14,
-                      fontweight='bold')
-        ax.set_ylabel(ylabel,
-                      fontsize=14,
-                      fontweight='bold')
-        plt.tight_layout()
+        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, gridspec_kw={"height_ratios": [0.9, 0.1]})
+        sns.despine(fig=fig, ax=ax1)
+        ax2.set_axis_off()
+
+        sns.boxplot(x="variable", y="value", data=df, order=order,
+                    palette=self.palette, ax=ax1)
+        ax1.set_xticklabels(ax1.get_xticklabels(), rotation=90)
+        ax1.set_xlabel(xlabel,
+                       fontsize=14,
+                       fontweight='bold')
+        ax1.set_ylabel(ylabel,
+                       fontsize=14,
+                       fontweight='bold')
         fig.savefig(os.path.join(self.outdir, "{}_boxplot.{}".format(name, self.extension)))
         plt.close()
 
@@ -348,7 +445,6 @@ class Visualiser:
         df['color'] = df['hue'].map(self.palette)
 
         total_coef, total_p = stats.pearsonr(df["x"], df["y"])
-        total_coef_str = "r = {:.2f}".format(total_coef)
 
         sns.set(rc={'figure.figsize': (12, 9)})
         sns.set_style("ticks")

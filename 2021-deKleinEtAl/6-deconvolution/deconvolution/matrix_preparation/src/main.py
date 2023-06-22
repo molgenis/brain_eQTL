@@ -1,7 +1,7 @@
 """
 File:         main.py
-Created:      2020/03/12
-Last Changed: 2020/06/05
+Created:      2020/10/08
+Last Changed: 2021/10/28
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -28,35 +28,30 @@ import os
 # Third party imports.
 
 # Local application imports.
-from general.utilities import prepare_output_dir
-from general.df_utilities import load_dataframe
-from general.local_settings import LocalSettings
+from local_settings import LocalSettings
+from utilities import prepare_output_dir
+from logger import Logger
 from .steps.combine_gte_files import CombineGTEFiles
 from .steps.combine_eqtlprobes import CombineEQTLProbes
+from .steps.create_dataset_matrix import CreateDatasetMatrix
 from .steps.create_matrices import CreateMatrices
-from .steps.create_deconvolution_matrices import CreateDeconvolutionMatrices
+from .steps.correct_dataset_effects import CorrectDatasetEffects
 from .steps.perform_deconvolution import PerformDeconvolution
-from .steps.perform_celltype_factorization import PerformCelltypeFactorization
-from .steps.create_cov_matrix import CreateCovMatrix
-from .steps.mask_matrices import MaskMatrices
-from .steps.create_groups import CreateGroups
-from .steps.create_regression_matrix import CreateRegressionMatrix
+from .steps.create_correction_matrix import CreateCorrectionMatrix
+from .steps.create_covs_matrix import CreateCovsMatrix
+from .steps.create_extra_covs_matrix import CreateExtraCovsMatrix
+from .steps.normal_transform_matrix import NormalTransformMatrix
 
 
 class Main:
-    """
-    Main: this class is the main class that calls all other functionality.
-    """
+    def __init__(self, name, settings_file, force_steps, extra_cov_matrix,
+                 clear_log):
+        self.name = name
+        self.settings_file = settings_file
+        self.force_steps = force_steps
+        self.extra_cov_matrix = extra_cov_matrix
+        self.clear_log = clear_log
 
-    def __init__(self, name, settings_file, disease, force_steps):
-        """
-        Initializer of the class.
-
-        :param name: string, the name of the base input/ouput directory.
-        :param settings_file: string, the name of the settings file.
-        :param disease: string, the name of the disease to analyse.
-        :param force_steps: list, the names of the steps to force to redo.
-        """
         # Define the current directory.
         current_dir = str(Path(__file__).parent.parent)
 
@@ -64,25 +59,35 @@ class Main:
         self.settings = LocalSettings(current_dir, settings_file)
 
         # Safe arguments.
-        self.disease = disease
         self.force_dict = self.create_force_dict(force_steps)
 
         # Prepare an output directory.
         self.outdir = os.path.join(current_dir, name)
         prepare_output_dir(self.outdir)
 
+        # Initialize logger.
+        logger = Logger(outdir=self.outdir, clear_log=clear_log)
+        self.log = logger.get_logger()
+
     @staticmethod
     def create_force_dict(force_steps):
-        force_dict = {'combine_gte_files': False,
-                      'combine_eqtlprobes': False,
-                      'create_matrices': False,
-                      'perform_celltype_factorization': False,
-                      'create_deconvolution_matrices': False,
-                      'perform_deconvolution': False,
-                      'create_cov_matrix': False,
-                      'mask_matrices': False,
-                      'create_groups': False,
-                      'create_regression_matrix': False}
+        order = ['combine_gte_files', 'combine_eqtlprobes',
+                 'create_dataset_matrix', 'create_matrices',
+                 'correct_dataset_effects', 'perform_deconvolution',
+                 'create_correction_matrix', 'create_covs_matrix',
+                 'create_extra_covs_matrix', 'normal_transform_matrix']
+        step_dependencies = {'combine_gte_files': {'create_dataset_matrix', 'create_matrices', 'create_correction_matrix', 'create_covs_matrix', 'create_extra_covs_matrix'},
+                             'combine_eqtlprobes': {'create_matrices'},
+                             'create_dataset_matrix': {'correct_dataset_effects', 'create_correction_matrix'},
+                             'create_matrices': {'correct_dataset_effects', 'perform_deconvolution', 'create_correction_matrix', 'create_cov_matrix'},
+                             'correct_dataset_effects': {'perform_deconvolution'},
+                             'perform_deconvolution': {'create_cov_matrix'},
+                             'create_correction_matrix': {},
+                             'create_covs_matrix': {},
+                             'create_extra_covs_matrix': {'normal_transform_matrix'},
+                             'normal_transform_matrix': {}}
+        force_dict = {step: False for step in order}
+
         if force_steps is None or len(force_steps) == 0:
             return force_dict
 
@@ -90,189 +95,181 @@ class Main:
             for key in force_dict.keys():
                 force_dict[key] = True
         else:
+            steps = set(force_steps)
             for step in force_steps:
-                if step in force_dict.keys():
-                    force_dict[step] = True
+                steps = steps.union(step_dependencies[step])
+                for pos_dep_step in order[order.index(step) + 1:]:
+                    if pos_dep_step in steps:
+                        steps = steps.union(step_dependencies[pos_dep_step])
+
+            for step in steps:
+                force_dict[step] = True
 
         return force_dict
 
     def start(self):
-        """
-        The method that serves as the pipeline of the whole program.
-        """
-        print("Starting program.")
-        print("\n### STEP1 ###\n")
+        self.log.info("Starting program.")
+        self.print_arguments()
+
+        self.log.info("### STEP1 ###")
+        self.log.info("")
         # Step 1. Combine GTE files.
         cgtef = CombineGTEFiles(
             settings=self.settings.get_setting('combine_gte_files'),
+            log=self.log,
             force=self.force_dict['combine_gte_files'],
             outdir=self.outdir)
         cgtef.start()
         cgtef.clear_variables()
+        self.log.info("")
 
         # Step2. Combine eQTL probes files.
-        print("\n### STEP2 ###\n")
+        self.log.info("### STEP2 ###")
+        self.log.info("")
         cepf = CombineEQTLProbes(
             settings=self.settings.get_setting('combine_eqtlprobes'),
-            disease=self.disease,
+            log=self.log,
             force=self.force_dict['combine_eqtlprobes'],
             outdir=self.outdir)
         cepf.start()
         cepf.clear_variables()
+        self.log.info("")
 
-        # Step3. Create the ordered unmasked matrices.
-        print("\n### STEP3 ###\n")
+        # Step3. Create the dataset matrix.
+        self.log.info("### STEP3 ###")
+        self.log.info("")
+        cdm = CreateDatasetMatrix(
+            settings=self.settings.get_setting('create_dataset_matrix'),
+            log=self.log,
+            dts_dict=cgtef.get_dataset_to_samples_dict(),
+            sample_order=cgtef.get_sample_order(),
+            force=self.force_dict['create_dataset_matrix'],
+            outdir=self.outdir)
+        cdm.start()
+        cdm.clear_variables()
+        self.log.info("")
+
+        # Step4. Create the ordered matrices.
+        self.log.info("### STEP4 ###")
+        self.log.info("")
         cm = CreateMatrices(
             settings=self.settings.get_setting('create_matrices'),
-            gte_df=cgtef.get_gte(),
+            log=self.log,
             sample_dict=cgtef.get_sample_dict(),
             sample_order=cgtef.get_sample_order(),
-            eqtl_df=cepf.get_eqtlprobes(),
+            eqtl_file=cepf.get_eqtl_file(),
+            eqtl_df=cepf.get_eqtl_df(),
             force=self.force_dict['create_matrices'],
             outdir=self.outdir)
         cm.start()
         cm.clear_variables()
+        self.log.info("")
 
-        # Step4. Create the deconvolution matrices.
-        print("\n### STEP4 ###\n")
-        cdm = CreateDeconvolutionMatrices(
-            settings=self.settings.get_setting('create_deconvolution_matrices'),
-            expr_file=cm.get_expr_file(),
-            expr_df=cm.get_complete_expr_matrix(),
-            sample_dict=cgtef.get_sample_dict(),
-            sample_order=cgtef.get_sample_order(),
-            force=self.force_dict['create_deconvolution_matrices'],
-            outdir=self.outdir)
-        cdm.start()
-        cdm.clear_variables()
+        # # Step5. Correct the gene expression for dataset effects.
+        # self.log.info("### STEP5 ###")
+        # self.log.info("")
+        # cde = CorrectDatasetEffects(
+        #     settings=self.settings.get_setting('correct_dataset_effects'),
+        #     log=self.log,
+        #     dataset_file=cdm.get_dataset_file(),
+        #     dataset_df=cdm.get_dataset_df(),
+        #     sign_expr_file=cm.get_sign_expr_file(),
+        #     sign_expr_df=cm.get_sign_expr_df(),
+        #     force=self.force_dict['correct_dataset_effects'],
+        #     outdir=self.outdir)
+        # cde.start()
+        # cde.clear_variables()
+        # self.log.info("")
 
-        # Step5. Create the celltype PCA file.
-        print("\n### STEP5 ###\n")
-        pcf = PerformCelltypeFactorization(
-            settings=self.settings.get_setting('perform_celltype_factorization'),
-            profile_file=cdm.get_celltype_profile_file(),
-            profile_df=cdm.get_celltype_profile(),
-            ct_expr_file=cdm.get_ct_profile_expr_outpath(),
-            force=self.force_dict['perform_celltype_factorization'],
-            outdir=self.outdir)
-        pcf.start()
-        pcf.clear_variables()
-
-        # Step6. Create the covariance matrix.
-        print("\n### STEP6 ###\n")
+        # Step6. Perform NNLS deconvolution.
+        self.log.info("### STEP6 ###")
+        self.log.info("")
         pd = PerformDeconvolution(
             settings=self.settings.get_setting('perform_deconvolution'),
-            profile_file=cdm.get_celltype_profile_file(),
-            profile_df=cdm.get_celltype_profile(),
-            ct_expr_file=cdm.get_ct_profile_expr_outpath(),
-            ct_expr_df=pcf.get_celltype_expression(),
+            log=self.log,
+            sign_file=cm.get_sign_file(),
+            sign_df=cm.get_sign_df(),
+            sign_expr_file=cm.get_sign_expr_file(),
+            sign_expr_df=cm.get_sign_expr_df(),
             force=self.force_dict['perform_deconvolution'],
             outdir=self.outdir)
         pd.start()
         pd.clear_variables()
+        self.log.info("")
 
-        # Step7. Create the covariance matrix.
-        print("\n### STEP7 ###\n")
-        ccm = CreateCovMatrix(
-            settings=self.settings.get_setting('create_cov_matrix'),
-            marker_file=cdm.get_markers_outpath(),
-            celltype_pcs=pcf.get_celltype_pcs(),
-            celltype_cs=pcf.get_celltype_cs(),
-            deconvolution=pd.get_deconvolution(),
+        # Step7. Filter technical covariates.
+        self.log.info("### STEP7 ###")
+        self.log.info("")
+        ccorm = CreateCorrectionMatrix(
+            settings=self.settings.get_setting('create_correction_matrix'),
+            log=self.log,
+            dataset_file=cdm.get_dataset_file(),
+            dataset_df=cdm.get_dataset_df(),
+            sample_dict=cgtef.get_sample_dict(),
             sample_order=cgtef.get_sample_order(),
-            force=self.force_dict['create_cov_matrix'],
+            force=self.force_dict['create_correction_matrix'],
             outdir=self.outdir)
-        ccm.start()
-        ccm.clear_variables()
+        ccorm.start()
+        ccorm.clear_variables()
+        self.log.info("")
 
-        exit()
-
-        # Load the complete dataframes.
-        print("\n### LOADING SORTED DATAFRAMES ###\n")
-        print("Extracting eQTL dataframe.")
-        eqtl_df = cepf.get_eqtlprobes()
-
-        print("Loading genotype dataframe.")
-        geno_df = load_dataframe(cm.get_geno_outpath(),
-                                 header=0,
-                                 index_col=0)
-
-        print("Loading alleles dataframe.")
-        alleles_df = load_dataframe(cm.get_alleles_outpath(),
-                                    header=0,
-                                    index_col=0)
-
-        print("Loading expression dataframe.")
-        expr_df = load_dataframe(cm.get_expr_outpath(),
-                                 header=0,
-                                 index_col=0)
-
-        print("Extracting covariates dataframe.")
-        cov_df = ccm.get_covariates()
-
-        # Validate the matrices.
-        print("Validating matrices.")
-        self.validate(eqtl_df.copy(), geno_df, alleles_df, expr_df, cov_df)
-
-        # Step 8. Create the masked matrices.
-        print("\n### STEP8 ###\n")
-        cmm = MaskMatrices(
-            settings=self.settings.get_setting('mask_matrices'),
-            eqtl_df=eqtl_df.copy(),
-            geno_df=geno_df.copy(),
-            alleles_df=alleles_df.copy(),
-            expr_df=expr_df.copy(),
-            cov_df=cov_df.copy(),
-            force=self.force_dict['mask_matrices'],
+        # Step8. Create the covariance matrix.
+        self.log.info("### STEP8 ###")
+        self.log.info("")
+        ccovm = CreateCovsMatrix(
+            settings=self.settings.get_setting('create_covs_matrix'),
+            log=self.log,
+            decon_file=pd.get_decon_file(),
+            decon_df=pd.get_decon_df(),
+            sample_dict=cgtef.get_sample_dict(),
+            sample_order=cgtef.get_sample_order(),
+            force=self.force_dict['create_covs_matrix'],
             outdir=self.outdir)
-        cmm.start()
-        del cmm
+        ccovm.start()
+        ccovm.clear_variables()
+        self.log.info("")
 
-        # # Step 9. Create the group matrices.
-        # print("\n### STEP9 ###\n")
-        # cg = CreateGroups(
-        #     settings=self.settings.get_setting('create_groups'),
-        #     eqtl_df=eqtl_df.copy(),
-        #     geno_df=geno_df.copy(),
-        #     alleles_df=alleles_df.copy(),
-        #     expr_df=expr_df.copy(),
-        #     cov_df=cov_df.copy(),
-        #     groups_file=cm.get_group_outpath(),
-        #     force=self.force_dict['create_groups'],
-        #     outdir=self.outdir)
-        # cg.start()
-        # del cg
+        if self.extra_cov_matrix:
 
-        # Step 10. Create the regression matrices.
-        print("\n### STEP10 ###\n")
-        crm = CreateRegressionMatrix(
-            settings=self.settings.get_setting('create_regression_matrix'),
-            eqtl_df=eqtl_df.copy(),
-            geno_df=geno_df.copy(),
-            alleles_df=alleles_df.copy(),
-            expr_df=expr_df.copy(),
-            force=self.force_dict['create_regression_matrix'],
-            outdir=self.outdir)
-        crm.start()
-        del crm
+            # Step9. Create additional covariance matrix.
+            self.log.info("### STEP9 ###")
+            self.log.info("")
+            cecm = CreateExtraCovsMatrix(
+                settings=self.settings.get_setting('create_extra_covs_matrix'),
+                log=self.log,
+                inpath=self.extra_cov_matrix,
+                sample_dict=cgtef.get_sample_dict(),
+                sample_order=cgtef.get_sample_order(),
+                force=self.force_dict['create_extra_covs_matrix'],
+                outdir=self.outdir)
+            cecm.start()
+            cecm.clear_variables()
+            self.log.info("")
 
-    @staticmethod
-    def validate(eqtl_df, geno_df, alleles_df, expr_df, cov_df):
-        # Set the index of the eQTL for comparison.
-        eqtl_df.index = eqtl_df["SNPName"]
-        eqtl_df.index.name = "-"
+            # # Step10. Normal transform extra cov matrix.
+            # self.log.info("### STEP10 ###")
+            # self.log.info("")
+            # cecm = NormalTransformMatrix(
+            #     settings=self.settings.get_setting('normal_transform_matrix'),
+            #     log=self.log,
+            #     df=cecm.get_df(),
+            #     inpath=cecm.get_outpath(),
+            #     force=self.force_dict['normal_transform_matrix'],
+            #     outdir=self.outdir)
+            # cecm.start()
+            # cecm.clear_variables()
+            # self.log.info("")
 
-        # Check if row order is identical.
-        if not (eqtl_df.index.identical(geno_df.index)) or \
-                not (eqtl_df.index.identical(expr_df.index)) or \
-                not (eqtl_df.index.identical(alleles_df.index)):
-            print("Row order is not identical.")
-            exit()
+        # End.
+        self.log.info("")
+        self.log.info("Program completed.")
 
-        # Check if sample order is identical.
-        if not (geno_df.columns.identical(expr_df.columns)) or \
-                not (geno_df.columns.identical(cov_df.columns)):
-            print("Order of samples are not identical.")
-            exit()
-
-        print("\tValid.")
+    def print_arguments(self):
+        self.log.info("Arguments:")
+        self.log.info("  > Name: {}".format(self.name))
+        self.log.info("  > Settings file: {}".format(self.settings_file))
+        self.log.info("  > Force steps: {}".format(self.force_steps))
+        self.log.info("  > Extra covariate matrix: {}".format(self.extra_cov_matrix))
+        self.log.info("  > Clear log: {}".format(self.clear_log))
+        self.log.info("  > Output directory: {}".format(self.outdir))
+        self.log.info("")

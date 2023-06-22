@@ -1,7 +1,7 @@
 """
 File:         main.py
 Created:      2020/06/29
-Last Changed: 2020/09/17
+Last Changed: 2021/08/04
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -68,18 +68,25 @@ class Main:
 
         # Filter the samples.
         print("### Filtering")
-        df = DataFilter(settings=self.settings,
-                        raw_expression=dl.get_expression())
-        df.work()
-        df.print_info()
-        self.settings.set_filter1_shape_diff(df.get_shape_diff())
+        filtered_expression = dl.get_expression()
+        datasets = None
+        if self.settings.sample_to_dataset_path is not None:
+            df = DataFilter(settings=self.settings,
+                            raw_expression=filtered_expression)
+            df.work()
+            df.print_info()
+            self.settings.set_filter1_shape_diff(df.get_shape_diff())
+            self.settings.set_reference_dataset(df.get_reference_dataset())
+
+            filtered_expression = df.get_filtered_expression()
+            datasets = df.get_datasets()
 
         # Preprocessing.
         print("### Preprocessing")
         dp = DataPreprocessor(settings=self.settings,
                               raw_signature=dl.get_signature(),
-                              raw_expression=df.get_expression(),
-                              cohorts=df.get_cohorts())
+                              raw_expression=filtered_expression,
+                              datasets=datasets)
         dp.work()
         dp.print_info()
 
@@ -97,7 +104,8 @@ class Main:
                                   expression=dp.get_expression())
         pf.work()
         pf.print_info()
-        self.settings.set_avg_residuals(pf.get_avg_residuals())
+        self.settings.set_avg_residuals(pf.get_avg_rss())
+        self.settings.set_avg_recon_accuracy(pf.get_avg_recon_accuracy())
         self.settings.set_pred_info_per_celltype(pf.get_info_per_celltype())
 
         # Comparison.
@@ -123,17 +131,20 @@ class Main:
                            ground_truth=dl.get_ground_truth(),
                            comparison=dc.get_comparison())
             v.plot_profile_clustermap()
+            v.plot_profile_correlations()
             v.plot_profile_stripplot()
             v.plot_profile_boxplot()
             v.plot_deconvolution_clustermap()
+            v.plot_deconvolution_correlations()
             v.plot_deconvolution_per_sample()
             #v.plot_deconvolution_distribution()
             v.plot_deconvolution_boxplot()
             #v.plot_ground_truth_distribution()
             v.plot_ground_truth_boxplot()
             v.plot_prediction_comparison()
+            v.plot_recon_accuracy_boxplot(s=pf.get_recon_accuracy())
 
             if self.plot_ids is not None:
                 for plot_id in self.plot_ids:
                     print("Plotting {}".format(plot_id))
-                    v.plot_violin_comparison(plot_id, df.get_translate_dict(value=plot_id))
+                    v.plot_violin_comparison(plot_id, df.get_sample_to_dataset_dict())

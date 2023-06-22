@@ -1,7 +1,7 @@
 """
 File:         data_preprocessor.py
 Created:      2020/06/29
-Last Changed: 2020/09/07
+Last Changed: 2021/08/04
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -26,21 +26,21 @@ from __future__ import print_function
 # Third party imports.
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
+import time
 
 # Local application imports.
 
 
 class DataPreprocessor:
-    def __init__(self, settings, raw_signature, raw_expression, cohorts):
+    def __init__(self, settings, raw_signature, raw_expression, datasets):
         self.min_expr = settings.get_min_expr()
-        self.cohort_corr = settings.get_cohort_corr()
+        self.dataset_correction = settings.get_dataset_correction()
         self.normalize = settings.get_normalize()
         self.zscore = settings.get_zscore()
         self.log2 = settings.get_log2()
         self.raw_signature = raw_signature
         self.raw_expression = raw_expression
-        self.cohorts = cohorts
+        self.datasets = datasets
 
         self.shape_diff = None
         self.signature = None
@@ -57,13 +57,13 @@ class DataPreprocessor:
                                                self.min_expr)
 
         # Subset and reorder.
-        sign_df, expr_df, cohort_df = self.subset(sign_df,
-                                                  self.raw_expression,
-                                                  self.cohorts)
+        sign_df, expr_df, dataset_df = self.subset(sign_df,
+                                                   self.raw_expression,
+                                                   self.datasets)
 
         # Correct for cohorts.
-        if self.cohort_corr:
-            expr_df = self.cohort_correction(expr_df, cohort_df)
+        if self.dataset_correction:
+            expr_df = self.cohort_correction(expr_df, dataset_df)
 
         # Transform.
         if self.normalize:
@@ -98,7 +98,7 @@ class DataPreprocessor:
         return df, drop_shape
 
     @staticmethod
-    def subset(raw_signature, raw_expression, raw_cohorts):
+    def subset(raw_signature, raw_expression, raw_datasets):
         print("Subsetting and reodering the input matrices")
         gene_overlap = np.intersect1d(raw_signature.index, raw_expression.index)
         sign_df = raw_signature.loc[gene_overlap, :]
@@ -111,40 +111,48 @@ class DataPreprocessor:
             print("Invalid gene order")
             exit()
 
-        cohorts_df = None
-        if raw_cohorts is not None:
-            sample_overlap = np.intersect1d(expr_df.columns, raw_cohorts.index)
+        datasets_df = None
+        if raw_datasets is not None:
+            sample_overlap = np.intersect1d(expr_df.columns, raw_datasets.index)
             expr_df = expr_df.loc[:, sample_overlap]
-            cohorts_df = raw_cohorts.loc[sample_overlap, :]
+            datasets_df = raw_datasets.loc[sample_overlap, :]
 
-            if not expr_df.columns.equals(cohorts_df.index):
+            if not expr_df.columns.equals(datasets_df.index):
                 print("Invalid sample order")
                 exit()
 
-        return sign_df, expr_df, cohorts_df
+        return sign_df, expr_df, datasets_df
 
     @staticmethod
-    def cohort_correction(raw_expression, cohorts):
+    def cohort_correction(raw_expression, datasets):
         print("Performing cohort correction on expression data")
 
-        new_expression_data = []
-        for i, (index, expression) in enumerate(raw_expression.iterrows()):
-            if (i % 100 == 0) or (i == (raw_expression.shape[0] - 1)):
+        if list(raw_expression.columns) != list(datasets.index):
+            print("Expression matrix and dataset matrix rows do not match.")
+            exit()
+
+        X = datasets.iloc[:, 1:].to_numpy()
+
+        new_expression_data = np.empty((raw_expression.shape[0], raw_expression.shape[1]), dtype=np.float64)
+        last_print_time = None
+        for i in range(raw_expression.shape[0]):
+            now_time = int(time.time())
+            if last_print_time is None or (now_time - last_print_time) >= 30:
+                last_print_time = now_time
                 print("\tProcessing {}/{} "
                       "[{:.2f}%]".format(i,
                                          (raw_expression.shape[0] - 1),
                                          (100 / (raw_expression.shape[0] - 1)) * i))
 
-            if expression.index.equals(cohorts.index):
-                ols = sm.OLS(expression, cohorts)
-                try:
-                    ols_result = ols.fit()
-                    residuals = ols_result.resid.values
-                    corrected_expression = expression.mean() + residuals
-                    new_expression_data.append(corrected_expression.tolist())
-
-                except np.linalg.LinAlgError as e:
-                    print("\t\tError: {}".format(e))
+            y = raw_expression.iloc[i, :].to_numpy()
+            try:
+                y_hat = np.dot(X, np.linalg.inv(X.T.dot(X)).dot(X.T).dot(y))
+                residuals = y - y_hat
+                corrected_expression = y.mean() + residuals
+                new_expression_data[i, :] = corrected_expression
+            except np.linalg.LinAlgError as e:
+                print("\t\tError: {}".format(e))
+                new_expression_data[i, :] = np.nan
 
         new_expression_df = pd.DataFrame(new_expression_data,
                                          index=raw_expression.index,

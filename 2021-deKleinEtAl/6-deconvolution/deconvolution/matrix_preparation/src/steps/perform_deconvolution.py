@@ -1,7 +1,7 @@
 """
 File:         perform_deconvolution.py
-Created:      2020/04/08
-Last Changed: 2020/09/15
+Created:      2020/10/08
+Last Changed: 2021/12/07
 Author:       M.Vochteloo
 
 Copyright (C) 2020 M.Vochteloo
@@ -26,37 +26,21 @@ import os
 import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
-import statsmodels.api as sm
 
 # Local application imports.
-from general.utilities import prepare_output_dir, check_file_exists
-from general.df_utilities import load_dataframe, save_dataframe
+from utilities import prepare_output_dir, check_file_exists, load_dataframe, save_dataframe
 
 
 class PerformDeconvolution:
-    def __init__(self, settings, profile_file, profile_df, ct_expr_file,
-                 ct_expr_df, force, outdir):
-        """
-        The initializer for the class.
-
-
-        :param settings: string, the settings.
-        :param profile_file: string, the datafile contaioning the celltype
-                             profile.
-        :param profile_df: DataFrame, the celltype profile.
-        :param ct_expr_file: string, the datafile containing expression
-                             of the celltype profiles.
-        :param ct_expr_df: string, the celltype expression.
-        :param force: boolean, whether or not to force the step to redo.
-        :param outdir: string, the output directory.
-        """
-        self.sample_cohort_file = settings["sample_cohort_datafile"]
-        self.sample_id = settings["sample_cohort_identifiers"]["sample"]
-        self.cohort_id = settings["sample_cohort_identifiers"]["cohort"]
-        self.profile_file = profile_file
-        self.profile_df = profile_df
-        self.ct_expr_file = ct_expr_file
-        self.ct_expr_df = ct_expr_df
+    def __init__(self, settings, log, sign_file, sign_df, sign_expr_file,
+                 sign_expr_df, force, outdir):
+        self.min_expr_cutoff = settings["min_expr_cutoff"]
+        self.cell_type_groups = settings["cell_type_groups"]
+        self.log = log
+        self.sign_file = sign_file
+        self.sign_df = sign_df
+        self.sign_expr_file = sign_expr_file
+        self.sign_expr_df = sign_expr_df
         self.force = force
 
         # Prepare an output directories.
@@ -67,107 +51,123 @@ class PerformDeconvolution:
         self.outpath = os.path.join(self.outdir, "deconvolution_table.txt.gz")
 
         # Create empty variable.
-        self.deconvolution = None
+        self.decon_df = None
 
     def start(self):
-        print("Starting deconvolution.")
+        self.log.info("Starting deconvolution.")
         self.print_arguments()
 
         # Check if output file exist.
-        if check_file_exists(self.outpath) and not self.force:
-            print("Skipping step, loading result.")
-            self.deconvolution = load_dataframe(inpath=self.outpath,
-                                                header=0, index_col=0)
-        else:
-            self.deconvolution = self.perform_deconvolution()
+        if not check_file_exists(self.outpath) or self.force:
+            self.decon_df = self.perform_deconvolution()
             self.save()
+        else:
+            self.log.info("Skipping step.")
 
     def perform_deconvolution(self):
-        if self.profile_df is None:
+        if self.sign_df is None:
             # Load the celltype profile file.
-            print("Loading cell type profile matrix.")
-            self.profile_df = load_dataframe(self.profile_file,
-                                             header=0, index_col=0)
-
-        if self.ct_expr_df is None:
-            # Load the celltype expression file.
-            print("Loading cell type expression matrix.")
-            self.ct_expr_df = load_dataframe(self.ct_expr_file,
-                                             header=0, index_col=0)
-
-        print("Loading sample cohort matrix.")
-        sample_cohort_df = load_dataframe(self.sample_cohort_file,
+            self.log.info("Loading cell type profile matrix.")
+            self.sign_df = load_dataframe(self.sign_file,
                                           header=0,
-                                          index_col=None)
+                                          index_col=0,
+                                          logger=self.log)
 
-        # Correct for cohort effects.
-        cohort_df = self.create_cohort_df(list(self.ct_expr_df.columns),
-                                          sample_cohort_df,
-                                          self.sample_id,
-                                          self.cohort_id)
+        if self.sign_expr_df is None:
+            # Load the celltype expression file.
+            self.log.info("Loading cell type expression matrix.")
+            self.sign_expr_df = load_dataframe(self.sign_expr_file,
+                                               header=0,
+                                               index_col=0,
+                                               logger=self.log)
 
         # Filter uninformative genes from the signature matrix.
-        prof_df = self.filter(self.profile_df)
+        sign_df = self.filter(self.sign_df, cutoff=self.min_expr_cutoff)
 
         # Subset and reorder.
-        prof_df, expr_df, cohort_df = self.subset(prof_df,
-                                                  self.ct_expr_df,
-                                                  cohort_df)
-
-        # Correct for cohorts.
-        expr_df = self.cohort_correction(expr_df, cohort_df)
+        sign_df, expr_df = self.subset(sign_df, self.sign_expr_df)
 
         # Transform.
-        prof_df = self.perform_log2_transform(prof_df)
+        sign_df = self.perform_log2_transform(sign_df)
 
         # Shift the data to be positive.
-        print("Shifting data to be positive")
-        if prof_df.values.min() < 0:
-            prof_df = self.perform_shift(prof_df)
+        self.log.info("Shifting data to be positive if required")
+        if sign_df.values.min() < 0:
+            self.log.warning("\tSignature matrix is shifted.")
+            sign_df = self.perform_shift(sign_df)
 
         if expr_df.values.min() < 0:
+            self.log.warning("\tExpression matrix is shifted.")
             expr_df = self.perform_shift(expr_df)
 
-        print("Profile shape: {}".format(prof_df.shape))
-        print("Expression shape: {}".format(expr_df.shape))
+        self.log.info("Signature shape: {}".format(sign_df.shape))
+        self.log.info("Expression shape: {}".format(expr_df.shape))
 
         # Perform deconvolution per sample.
-        print("Performing partial deconvolution.")
+        self.log.info("Performing partial deconvolution.")
         decon_data = []
         residuals_data = []
+        recon_accuracy_data = []
         for _, sample in expr_df.T.iterrows():
-            proportions, rnorm = self.nnls(prof_df, sample)
+            # Model.
+            proportions, rnorm = self.nnls(sign_df, sample)
+
+            # Calculate reconstruction accuracy.
+            recon_accuracy = self.calc_reconstruction_accuracy(y=sample,
+                                                               X=sign_df,
+                                                               betas=proportions)
+
+            # Save.
             decon_data.append(proportions)
             residuals_data.append(rnorm)
+            recon_accuracy_data.append(recon_accuracy)
 
         decon_df = pd.DataFrame(decon_data,
                                 index=expr_df.columns,
-                                columns=["{}NNLS_{}".format(*x.split("_")) for x in prof_df.columns])
+                                columns=sign_df.columns)
         residuals_df = pd.Series(residuals_data, index=expr_df.columns)
+        recon_accuracy = pd.Series(recon_accuracy_data, index=expr_df.columns)
 
-        print("Estimated weights:")
-        print(decon_df)
-        print(decon_df.mean(axis=0))
+        self.log.info("Estimated weights:")
+        self.log.info(decon_df.mean(axis=0))
+        self.log.info("Average reconstruction accuracy: {:.2f} [SD: {:.2f}]".format(recon_accuracy.mean(), recon_accuracy.std()))
+
+        save_dataframe(df=decon_df, outpath=os.path.join(self.outdir, "NNLS_betas.txt.gz"),
+                       index=True, header=True, logger=self.log)
 
         # Make the weights sum up to 1.
         decon_df = self.sum_to_one(decon_df)
-        print("Estimated proportions:")
-        print(decon_df)
-        print(decon_df.mean(axis=0))
+        self.log.info("Estimated proportions:")
+        self.log.info(decon_df.mean(axis=0))
 
         # Calculate the average residuals.
-        print(residuals_df)
-        print("Average residual: {:.2f}".format(residuals_df.mean()))
+        self.log.info("Average residual: {:.2f}".format(residuals_df.mean()))
+
+        save_dataframe(df=decon_df, outpath=os.path.join(self.outdir, "deconvolution_table_complete.txt.gz"),
+                       index=True, header=True, logger=self.log)
+
+        if self.cell_type_groups is not None:
+            self.log.info("Summing cell types.")
+            cell_type_group = np.array([self.cell_type_groups[ct] if ct in self.cell_type_groups else ct for ct in decon_df.columns], dtype=object)
+            cell_types = list(set(cell_type_group))
+            cell_types.sort()
+            summed_decon_df = pd.DataFrame(np.nan, index=decon_df.index, columns=cell_types)
+            for ct_group in cell_types:
+                summed_decon_df.loc[:, ct_group] = decon_df.loc[:, cell_type_group == ct_group].sum(axis=1)
+
+            decon_df = summed_decon_df
 
         return decon_df
 
     @staticmethod
-    def filter(df, cutoff=0):
+    def filter(df, cutoff):
         tmp = df.copy()
         return tmp.loc[(tmp.std(axis=1) != 0) & (tmp.max(axis=1) > cutoff), :]
 
-    @staticmethod
-    def subset(raw_signature, raw_expression, raw_cohorts):
+    def subset(self, raw_signature, raw_expression):
+        raw_signature.dropna(inplace=True)
+        raw_expression.dropna(inplace=True)
+
         gene_overlap = np.intersect1d(raw_signature.index, raw_expression.index)
         sign_df = raw_signature.loc[gene_overlap, :]
         expr_df = raw_expression.loc[gene_overlap, :]
@@ -176,69 +176,10 @@ class PerformDeconvolution:
         expr_df.index.name = "-"
 
         if not sign_df.index.equals(expr_df.index):
-            print("Invalid gene order")
+            self.log.error("Invalid gene order")
             exit()
 
-        cohorts_df = None
-        if raw_cohorts is not None:
-            sample_overlap = np.intersect1d(expr_df.columns, raw_cohorts.index)
-            expr_df = expr_df.loc[:, sample_overlap]
-            cohorts_df = raw_cohorts.loc[sample_overlap, :]
-
-            if not expr_df.columns.equals(cohorts_df.index):
-                print("Invalid sample order")
-                exit()
-
-        return sign_df, expr_df, cohorts_df
-
-    @staticmethod
-    def create_cohort_df(samples, sample_cohort_df, sample_id, cohort_id):
-        sample_to_cohort_dict = dict(zip(sample_cohort_df.loc[:, sample_id], sample_cohort_df.loc[:, cohort_id]))
-
-        cohort_to_sample_dict = {}
-        for sample in samples:
-            cohort = sample_to_cohort_dict[sample]
-            if cohort in cohort_to_sample_dict.keys():
-                value = cohort_to_sample_dict[cohort]
-                value.append(sample)
-                cohort_to_sample_dict[cohort] = value
-            else:
-                cohort_to_sample_dict[cohort] = [sample]
-
-        cohort_df = pd.DataFrame(0,
-                                 index=sample_to_cohort_dict.keys(),
-                                 columns=cohort_to_sample_dict.keys())
-        for cohort in cohort_df.columns:
-            cohort_df.loc[cohort_df.index.isin(cohort_to_sample_dict[cohort]), cohort] = 1
-
-        return cohort_df
-
-    @staticmethod
-    def cohort_correction(raw_expression, cohorts):
-        new_expression_data = []
-        for i, (index, expression) in enumerate(raw_expression.iterrows()):
-            if (i % 100 == 0) or (i == (raw_expression.shape[0] - 1)):
-                print("\tProcessing {}/{} "
-                      "[{:.2f}%]".format(i,
-                                         (raw_expression.shape[0] - 1),
-                                         (100 / (raw_expression.shape[0] - 1)) * i))
-
-            if expression.index.equals(cohorts.index):
-                ols = sm.OLS(expression, cohorts)
-                try:
-                    ols_result = ols.fit()
-                    residuals = ols_result.resid.values
-                    corrected_expression = expression.mean() + residuals
-                    new_expression_data.append(corrected_expression.tolist())
-
-                except np.linalg.LinAlgError as e:
-                    print("\t\tError: {}".format(e))
-
-        new_expression_df = pd.DataFrame(new_expression_data,
-                                         index=raw_expression.index,
-                                         columns=raw_expression.columns)
-
-        return new_expression_df
+        return sign_df, expr_df
 
     @staticmethod
     def perform_log2_transform(df):
@@ -255,33 +196,46 @@ class PerformDeconvolution:
         return nnls(A, b)
 
     @staticmethod
+    def calc_reconstruction_accuracy(y, X, betas):
+        y_hat = np.dot(X, betas)
+        residuals = y - y_hat
+        residuals_norm = np.linalg.norm(residuals)
+        y_hat_norm = np.linalg.norm(y)
+        return 1 - (residuals_norm * residuals_norm) / (y_hat_norm * y_hat_norm)
+
+    @staticmethod
     def sum_to_one(X):
         return X.divide(X.sum(axis=1), axis=0)
 
     def save(self):
-        save_dataframe(df=self.deconvolution, outpath=self.outpath,
-                       index=True, header=True)
+        save_dataframe(df=self.decon_df, outpath=self.outpath,
+                       index=True, header=True, logger=self.log)
 
     def clear_variables(self):
-        self.profile_file = None
-        self.profile_df = None
-        self.ct_expr_file = None
-        self.ct_expr_df = None
+        self.sign_file = None
+        self.sign_df = None
+        self.sign_expr_file = None
+        self.sign_expr_df = None
         self.force = None
 
-    def get_deconvolution(self):
-        return self.deconvolution
+    def get_decon_file(self):
+        return self.outpath
+
+    def get_decon_df(self):
+        return self.decon_df
 
     def print_arguments(self):
-        print("Arguments:")
-        if self.profile_df is not None:
-            print("  > Celltype profile: {}".format(self.profile_df.shape))
+        self.log.info("Arguments:")
+        self.log.info("  > Min. expression cut-off: {}".format(self.min_expr_cutoff))
+        if self.sign_df is not None:
+            self.log.info("  > Signature: {}".format(self.sign_df.shape))
         else:
-            print("  > Celltype profile input file: {}".format(self.profile_file))
-        if self.ct_expr_df is not None:
-            print("  > Celltype expression: {}".format(self.ct_expr_df.shape))
+            self.log.info("  > Signature input file: {}".format(self.sign_file))
+        if self.sign_expr_df is not None:
+            self.log.info("  > Signature expression: {}".format(self.sign_expr_df.shape))
         else:
-            print("  > Celltype expression input path: {}".format(self.ct_expr_file))
-        print("  > Deconvolution output file: {}".format(self.outpath))
-        print("  > Force: {}".format(self.force))
-        print("")
+            self.log.info("  > Signature input path: {}".format(self.sign_expr_file))
+        self.log.info("  > Cell type groups: {}".format(self.cell_type_groups))
+        self.log.info("  > Deconvolution output file: {}".format(self.outpath))
+        self.log.info("  > Force: {}".format(self.force))
+        self.log.info("")
