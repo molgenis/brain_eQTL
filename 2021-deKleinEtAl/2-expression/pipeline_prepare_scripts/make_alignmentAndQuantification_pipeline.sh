@@ -64,7 +64,7 @@ clone_pipelines(){
     # In case the program has already run in current direcotry
     rm -rf Public_RNA-seq_QC
     rm -rf Public_RNA-seq_quantification
-    git clone https://github.com/npklein/molgenis-pipelines.git
+    git clone https://github.com/harmjanwestra/molgenis-pipelines.git
     # Move the relevant pipeline directories to the main project_dir
     mv molgenis-pipelines/compute5/Public_RNA-seq_QC/ .
     mv molgenis-pipelines/compute5/Public_RNA-seq_quantification/ .
@@ -101,6 +101,14 @@ change_protocols(){
     # add a line to delete the unfiltered BAM and sorted BAM after cramming
     echo "rm \${sortedBamDir}/\${uniqueID}.bam" >> Public_RNA-seq_QC/protocols/CreateCramFiles.sh
 
+    # give createcramfiles a bit more mem
+    sed -i 's;mem=8gb;mem=10gb;' Public_RNA-seq_QC/protocols/CreateCramFiles.sh
+    
+    # give CollectMultipleQcMetrics a few less cores
+    sed -i 's;ppn=4;ppn=2;' Public_RNA-seq_QC/protocols/CollectMultipleQcMetrics.sh
+    sed -i 's;ParallelGCThreads=4;ParallelGCThreads=2;' Public_RNA-seq_QC/protocols/CollectMultipleQcMetrics.sh
+    sed -i 's;mem=4gb;mem=5gb;' Public_RNA-seq_QC/protocols/CollectMultipleQcMetrics.sh
+
     # Because we first convert to cram before running the collectMetrics jobs, change this for all Collect*sh scripts
     # This has changed for the new cohorts like Brainseq, keeping this in temporarily but will be removed later
 #    sed -i 's;#string sortedBam;#string cramFileDir;' Public_RNA-seq_QC/protocols/Collect*sh
@@ -114,7 +122,7 @@ change_protocols(){
     # Original SAM to BAM conversion is done in seperate step, but this step is removed from the workflow
     # Add the conversion to the STAR alignment script
     echo "echo \"convert SAM to BAM\"" >> Public_RNA-seq_QC/protocols/STARMapping.sh
-    echo "module load SAMtools/1.5-foss-2018b" >> Public_RNA-seq_QC/protocols/STARMapping.sh
+    echo "module load SAMtools/1.16.1-GCCcore-11.3.0" >> Public_RNA-seq_QC/protocols/STARMapping.sh
     echo "mkdir -p ${project_dir}/results/\${unfilteredBamDir}/" >> Public_RNA-seq_QC/protocols/STARMapping.sh
     echo "samtools view -h -b \${alignmentDir}/\${uniqueID}.sam > \${unfilteredBamDir}/\${uniqueID}.bam" >> Public_RNA-seq_QC/protocols/STARMapping.sh
     echo "rm \${alignmentDir}/\${uniqueID}.sam" >> Public_RNA-seq_QC/protocols/STARMapping.sh
@@ -157,7 +165,7 @@ change_parameter_files(){
     sed -i 's;genesRefFlat,${resDir}/Ensembl/release-${ensemblVersion}/gtf/homo_sapiens/${genomeLatSpecies}.${genomeGrchBuild}.${ensemblVersion}.refflat;genesRefFlat,${resDir}/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.primary_assembly.annotation.collapsedGenes.refflat;' Public_RNA-seq_QC/parameter_files/parameters.csv
     sed -i 's;STARindex,${resDir}/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_24/STAR/${starVersion}/;STARindex,${resDir}/UMCG/STAR_index/gencode_32/STAR_genome_GRCh38_gencode.v32.primaryAssembly_oh100/;' Public_RNA-seq_QC/parameter_files/parameters.csv
     sed -i 's;onekgGenomeFasta,${resDir}/${genomeBuild}/indices/human_g1k_v${human_g1k_vers}.fasta;onekgGenomeFasta,${resDir}//ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/GRCh38.primary_assembly.genome.fa;' Public_RNA-seq_QC/parameter_files/parameters.csv
-    sed -i 's;rRnaIntervalList,${resDir}//picard-tools/Ensembl${ensemblVersion}/${genomeLatSpecies}.${genomeGrchBuild}.${ensemblVersion}.rrna.interval_list;rRnaIntervalList,${resDir}/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.primary_assembly.annotation.collapsedGenes.rRNA.interval_list;' Public_RNA-seq_QC/parameter_files/parameters.cs
+    sed -i 's;rRnaIntervalList,${resDir}//picard-tools/Ensembl${ensemblVersion}/${genomeLatSpecies}.${genomeGrchBuild}.${ensemblVersion}.rrna.interval_list;rRnaIntervalList,${resDir}/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.primary_assembly.annotation.collapsedGenes.rRNA.interval_list;' Public_RNA-seq_QC/parameter_files/parameters.csv
 
     sed -i 's;genomeBuild,b37;genomeBuild,b38;' Public_RNA-seq_QC/parameter_files/parameters.csv
     sed -i 's;genomeGrchBuild,GRCh37;genomeGrchBuild,GRCh38;' Public_RNA-seq_QC/parameter_files/parameters.csv
@@ -168,9 +176,30 @@ change_parameter_files(){
     if [ "$HOSTNAME" = "gearshift" ];
     then
         echo "Change some parameters specifically for gearshift because different versions of tools are installed there"
+	sed -i s';Molgenis-Compute/v16.04.1-Java-11-LTS;Molgenis-Compute/v19.01.1-Java-8-LTS;' Public_RNA-seq_QC/prepare_Public_RNA-seq_QC.sh
 #        sed -i s';picardVersion,2.18.26-Java-1.8.0_74;picardVersion,2.20.5-Java-11-LTS;' Public_RNA-seq_QC/parameter_files/parameters.csv
 #        sed -i s';iolibVersion,1.14.6-foss-2018b;iolibVersion,1.14.11-GCCcore-7.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
-        sed -i s';samtoolsVersion,1.5-foss-2018b;samtoolsVersion,1.5-GCCcore-7.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+#        sed -i s';samtoolsVersion,1.5-foss-2018b;samtoolsVersion,1.5-GCCcore-7.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+
+	# edits 01-feb-2023:
+       sed -i s';samtoolsVersion,1.5-foss-2018b;samtoolsVersion,1.16.1-GCCcore-11.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';samtoolsVersion,1.5-foss-2015b;samtoolsVersion,1.16.1-GCCcore-11.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';starVersion,2.6.1c-foss-2015b;starVersion,2.6.1c-foss-2018b;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';pythonVersion,3.6.4-intel-2018a;pythonVersion,3.7.4-GCCcore-7.3.0-bare;' Public_RNA-seq_QC/parameter_files/parameters.csv
+
+       sed -i s';bedtoolsVersion,2.25.0-foss-2015b;bedtoolsVersion,2.30.0-GCCcore-11.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';cutadaptVersion,1.8.1-foss-2015b-Python-2.7.9;cutadaptVersion,4.2-GCCcore-11.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';picardVersion,2.18.26-Java-1.8.0_74;picardVersion,2.20.5-Java-11-LTS;' Public_RNA-seq_QC/parameter_files/parameters.csv
+#	can't seem to find iolib; I hope this will work.. :/
+       sed -i s';iolibVersion,1.14.6-foss-2015b;iolibVersion,1.14.11-GCCcore-7.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+	
+       sed -i s';tabixVersion,0.2.6-foss-2015b;tabixVersion,1.16-GCCcore-11.3.0;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';jdkVersion,1.8.0_25;jdkVersion,Java/8-LTS;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';fastqcVersion,0.11.3-Java-1.7.0_80;fastqcVersion,0.11.9-Java-8-LTS;' Public_RNA-seq_QC/parameter_files/parameters.csv
+       sed -i s';RVersion,3.2.1-foss-2015b;RVersion,3.6.1-foss-2018b-bare;' Public_RNA-seq_QC/parameter_files/parameters.csv
+
+#       sed -i s';;;' Public_RNA-seq_QC/parameter_files/parameters.csv
+	
     fi
 
 
@@ -252,6 +281,10 @@ make_samplesheets(){
     then
         python $samplesheet_script_dir/make_samplesheet_MSBB.py $samplesheet \
                                                                 $RNAseqDir
+    elif [[ "$cohort" == "WUSTL" ]];
+    then
+        python $samplesheet_script_dir/make_samplesheet_WUSTL.py $samplesheet \
+                                                                $RNAseqDir
     elif [[ "$cohort" == "ENA" ]];
     then
         echo "ERROR: need to get genotypes as well for the ENA samples. Because the pipeline needs to be set up quite differently, use make_alignmentQuantificationAndGenotype_pipeline.sh instead"
@@ -302,7 +335,7 @@ change_prepare_scripts(){
 
 make_pipeline_scripts(){
     # Make the pipeline scripts using Molgenis Compute
-    echo "Maing pipeline scripts..."
+    echo "Making pipeline scripts..."
     echo $PWD
 
     # convert the parameter files to wide format now instead of in the change_parameters function because the cohort_specific_steps function might have changed some of them

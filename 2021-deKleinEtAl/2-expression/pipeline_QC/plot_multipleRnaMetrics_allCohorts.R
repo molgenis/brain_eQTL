@@ -117,6 +117,7 @@ for(f in RnaMetrics_multiQC_files){
 RnaMetric_qc_all <- data.frame(RnaMetric_qc_all)
 RnaMetric_qc_all$Sample <- gsub('.cram','',RnaMetric_qc_all$Sample)
 
+print(RnaMetric_qc_all[RnaMetric_qc_all$cohort!='BrainGVEx',])
 RnaMetric_qc_all[RnaMetric_qc_all$cohort!='BrainGVEx',]$Sample <- gsub('-','.',RnaMetric_qc_all[RnaMetric_qc_all$cohort!='BrainGVEx',]$Sample)
 
 if('TargetALS' %in% RnaMetric_qc_all$cohort){
