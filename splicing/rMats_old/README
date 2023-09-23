@@ -1,0 +1,5 @@
+merge_psi_tables.py
+    Take the psi tables (made by a (modified) script received from Ellen not included in this git repo, ask Niek for availabilty) 
+    from individual samples and merge them into a matrix with all samples. Do this for all the different events:
+        'A3SS','A5SS','MXE','RI','SE'
+    See rMats documentation about what these mean
