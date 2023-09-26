@@ -1,5 +1,5 @@
 from enum import Enum
-import Feature
+from features.feature import Feature
 
 class Transcript(Feature):
     gene = None

@@ -1,4 +1,5 @@
 from enum import Enum
+from features.feature import Feature
 
 class Gene(Feature):
     name = None

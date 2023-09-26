@@ -1,5 +1,13 @@
 import gzip
-from features import *
+
+from features.feature import Feature
+from features.chromosome import Chromosome
+from features.exon import Exon
+from features.transcript import Transcript
+from features.strand import Strand
+from features.gene import Gene
+
+
 
 class GTFAnnotation:
 
@@ -111,6 +119,17 @@ class GTFAnnotation:
         # print(eobj.describe())
         # print(tobj.describe())
         # print(gobj.describe())
+
+    def getGenesByChromosome(self):
+        output = {}
+        for gene in self.genes:
+            chr = gene.chr
+            genesInChr = output.get(chr)
+            if genesInChr is None:
+                genesInChr = []
+            genesInChr.append(gene)
+            output[chr] = genesInChr
+        return output
 
 
     def parseln(self, line):

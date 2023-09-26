@@ -1,4 +1,5 @@
-import Feature
+from features.feature import Feature
+
 
 class SpliceFeature(Feature):
     name = None

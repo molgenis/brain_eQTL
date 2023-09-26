@@ -25,7 +25,7 @@ class Feature:
             return self.strand == other.strand
 
     def bpOverlap(self, other):
-        ov = self.overlap(other)
+        ov = self.overlaps(other)
         if not ov:
             return 0
         
