@@ -59,13 +59,14 @@ for line in fh:
     id = elems[0]
     # print(id)
     junction = SpliceFeature.parseLeafCutter(id)
-    junctions.append(junction)
-    clusterid = junction.clusterId
-    junctionsInCluster = clusters.get(clusterid)
-    if junctionsInCluster is None:
-        junctionsInCluster = []
-    junctionsInCluster.append(junction)
-    clusters[clusterid] = junctionsInCluster
+    if junction.chr.isAutosomal():
+        junctions.append(junction)
+        clusterid = junction.clusterId
+        junctionsInCluster = clusters.get(clusterid)
+        if junctionsInCluster is None:
+            junctionsInCluster = []
+        junctionsInCluster.append(junction)
+        clusters[clusterid] = junctionsInCluster
     lctr += 1
     if lctr % 50000 == 0:
         print("{} lines parsed, {} loaded, {} clusters".format(lctr,len(junctions),len(clusters)),end='\r')
@@ -80,32 +81,38 @@ genesByChr = annotation.getGenesByChromosome()
 # annotate genes within each cluster
 fho = gzip.open(outfile+"-nearestgene-annotation.txt.gz",'wt')
 fho2 = gzip.open(outfile+"-nearestgene-clusters.txt.gz",'wt')
+fho3 = gzip.open(outfile+"-nearestgene-junctions.txt.gz",'wt')
 fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\tTypeOfGene\n")
 jctr = 0
 for junction in junctions:
     genes = genesByChr.get(junction.chr)
     nearestGene = None
     nearestGeneDist = 1e10
-    for gene in genes:
-        dist = gene.absoluteMinimalDistance(junction)
-        if nearestGene is None:
-            nearestGene = gene
-            nearestGeneDist = dist
-            # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
-        else:
-            if dist < nearestGeneDist:
-                nearestGeneDist = dist
+    if genes is not None:
+        for gene in genes:
+            dist = gene.absoluteMinimalDistance(junction)
+            if nearestGene is None:
                 nearestGene = gene
+                nearestGeneDist = dist
                 # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
-    gene = nearestGene
-    fho.write("leafcutter\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(junction.name, gene.symbol, junction.chr.getNumber(), junction.start, junction.stop, gene.strand.toStr(), gene.name, gene.type))
-    fho2.write(junction.name+"\t"+junction.clusterId+"\n")
+            else:
+                if dist < nearestGeneDist:
+                    nearestGeneDist = dist
+                    nearestGene = gene
+                    # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
+        gene = nearestGene
+    if nearestGene is not None:            
+        fho.write("leafcutter\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(junction.name, gene.symbol, junction.chr.getNumber(), junction.start, junction.stop, gene.strand.toStr(), gene.name, gene.type))
+        fho2.write(junction.name+"\t"+junction.clusterId+"\n")
+        fho3.write(junction.name+"\n")
+    else:
+        print(bcolors.FAIL+"No gene for "+junction.name+" - "+str(junction.chr.getNumber())+bcolors.ENDC)
     jctr += 1
     if jctr % 1000 == 0:
         print("{} junctions written".format(jctr),end='\r')
         # break
 print("{} junctions written".format(jctr),end='\n')
-
+fho3.close()
 fho2.close()
 fho.close()
 sys.exit()

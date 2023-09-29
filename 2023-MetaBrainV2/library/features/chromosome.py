@@ -55,3 +55,6 @@ class Chromosome(Enum):
     
     def getName(self):
         return self.name
+    
+    def isAutosomal(self):
+        return (self.value > 0 and self.value < 23)

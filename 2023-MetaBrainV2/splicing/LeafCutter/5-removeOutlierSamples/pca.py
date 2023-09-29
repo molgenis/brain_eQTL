@@ -1,4 +1,5 @@
 import sys
+import gzip
 import pandas as pd
 import seaborn as sns
 import matplotlib
@@ -17,9 +18,15 @@ outprefix = sys.argv[2]
 npcs = int(sys.argv[3])
 
 print("parsing "+file)
-df = pd.read_csv(file, sep='\t')
+# pandas weirdness..
+# fh = gzip.open(file,'rt')
+# header = fh.readline().strip().split("\t")
+# fh.close()
+
+# df = pd.read_csv(file, sep='\t',header = None,skiprows=[0])
+df = pd.read_csv(file, sep='\t',index_col=0)
 print("Read matrix: {} x {}".format(df.shape[0], df.shape[1]))
-df.set_index('-')
+# df.set_index('-')
 print("Correlating..")
 cormat = df.corr()
 cormat = cormat.fillna(0)
