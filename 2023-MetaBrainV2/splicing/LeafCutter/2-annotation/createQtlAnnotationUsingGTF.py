@@ -26,19 +26,7 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-def distance(feat1, feat2):
-    
-    mind = abs(feat1.start - feat2.start)
-    d = abs(feat1.start - feat2.stop)
-    if d < mind:
-        mind = d
-    d = abs(feat1.stop - feat2.start)
-    if d < mind:
-        mind = d
-    d = abs(feat1.stop - feat2.stop)
-    if d < mind:
-        mind = d
-    return mind
+
 
 if len(sys.argv) < 4:
     print("Usage: gtf[.gz] splicefile outfile")
@@ -81,7 +69,7 @@ for line in fh:
     lctr += 1
     if lctr % 50000 == 0:
         print("{} lines parsed, {} loaded, {} clusters".format(lctr,len(junctions),len(clusters)),end='\r')
-        break
+        # break
 print("{} lines parsed, {} loaded, {} clusters".format(lctr,len(junctions),len(clusters)),end='\n')
 fh.close()
 
@@ -90,7 +78,39 @@ annotation = GTFAnnotation(gtffile)
 genesByChr = annotation.getGenesByChromosome()
 
 # annotate genes within each cluster
-cctr = 0
+fho = gzip.open(outfile+"-nearestgene-annotation.txt.gz",'wt')
+fho2 = gzip.open(outfile+"-nearestgene-clusters.txt.gz",'wt')
+fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\tTypeOfGene\n")
+jctr = 0
+for junction in junctions:
+    genes = genesByChr.get(junction.chr)
+    nearestGene = None
+    nearestGeneDist = 1e10
+    for gene in genes:
+        dist = gene.absoluteMinimalDistance(junction)
+        if nearestGene is None:
+            nearestGene = gene
+            nearestGeneDist = dist
+            # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
+        else:
+            if dist < nearestGeneDist:
+                nearestGeneDist = dist
+                nearestGene = gene
+                # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
+    gene = nearestGene
+    fho.write("leafcutter\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(junction.name, gene.symbol, junction.chr.getNumber(), junction.start, junction.stop, gene.strand.toStr(), gene.name, gene.type))
+    fho2.write(junction.name+"\t"+junction.clusterId+"\n")
+    jctr += 1
+    if jctr % 1000 == 0:
+        print("{} junctions written".format(jctr),end='\r')
+        # break
+print("{} junctions written".format(jctr),end='\n')
+
+fho2.close()
+fho.close()
+sys.exit()
+
+# more finegrained annotation
 for cluster in clusters.keys():
     junctions = clusters.get(cluster)
     overlappingGenes = set()
@@ -139,15 +159,15 @@ for cluster in clusters.keys():
                                 overlappingExons=True
                                 
                     if overlappingExons:
-                        genestr += "\t{}({}-{}); Str: {} - ov:{}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap) + "-"+bcolors.OKCYAN+"TRUE"+bcolors.ENDC
+                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap) + "-"+bcolors.OKCYAN+"TRUE"+bcolors.ENDC
                     else:
-                        genestr += "\t{}({}-{}); Str: {} - ov:{}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap)+ "-"+bcolors.FAIL+"FALSE"+bcolors.ENDC
+                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap)+ "-"+bcolors.FAIL+"FALSE"+bcolors.ENDC
                     if nearestGene is None:
                         nearestGene = gene
-                        nearestGeneDist = distance(gene,junction)
+                        nearestGeneDist = gene.absoluteMinimalDistance(junction)
                     else:
                         # compare the distance to this gene with the distance to the other gene
-                        mindist = distance(gene,junction)
+                        mindist = gene.absoluteMinimalDistance(junction)
                         if mindist < nearestGeneDist:
                             nearestGeneDist = mindist
                             nearestGene = gene
@@ -156,13 +176,12 @@ for cluster in clusters.keys():
             print(bcolors.OKBLUE+junction.name+ bcolors.ENDC+genestr+"\tNearest:"+bcolors.OKGREEN+nearestGene.symbol+bcolors.ENDC)
         print()
         cctr += 1
-        if cctr == 25:
+        if cctr % 100 == 0:
             sys.exit()
         pass
     elif len(overlappingGenes) == 1:
         print(bcolors.OKGREEN+"cluster {} overlaps 1 gene and has {} members".format(cluster, len(junctions))+ bcolors.ENDC) 
+        fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\n")
     else:
         print(bcolors.OKGREEN+"cluster {} overlaps no genes and has {} members".format(cluster, len(junctions))+ bcolors.ENDC)
-
-
-
+        fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\n")

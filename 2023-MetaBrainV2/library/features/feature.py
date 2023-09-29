@@ -46,3 +46,16 @@ class Feature:
         #   |---|    other
         if self.start <= other.stop and self.start >= other.start:
             return other.stop - self.start
+        
+    def absoluteMinimalDistance(self, feat2):
+        mind = abs(self.start - feat2.start)
+        d = abs(self.start - feat2.stop)
+        if d < mind:
+            mind = d
+        d = abs(self.stop - feat2.start)
+        if d < mind:
+            mind = d
+        d = abs(self.stop - feat2.stop)
+        if d < mind:
+            mind = d
+        return mind

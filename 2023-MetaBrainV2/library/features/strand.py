@@ -13,3 +13,10 @@ class Strand(Enum):
         if chrstr == "-" or chrstr == "-1":
             return Strand.NEG
         return Strand.NA
+    
+    def toStr(str):
+        if str == Strand.NA:
+            return "NA"
+        if str == Strand.POS:
+            return "+"
+        return "-"    
