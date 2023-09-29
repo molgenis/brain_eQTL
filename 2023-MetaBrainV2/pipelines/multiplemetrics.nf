@@ -16,7 +16,11 @@ process QCwithMultipleMetrics {
   
   PicardCommandLine CollectMultipleMetrics I=${sample} \
   O=${sample.baseName}/multiple_metrics \
-  R=${params.referenceGenome}
+  R=${params.referenceGenome} \
+  PROGRAM=CollectAlignmentSummaryMetrics \
+  PROGRAM=QualityScoreDistribution \
+  PROGRAM=MeanQualityByCycle \
+  PROGRAM=CollectInsertSizeMetrics
   """
 }
 

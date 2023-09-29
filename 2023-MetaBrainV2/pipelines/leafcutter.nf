@@ -1,11 +1,11 @@
-process identifyAlternativeSplicingSitesLeafCutter {
+process IdentifyAlternativeSplicingSitesLeafCutter {
   publishDir "$projectDir/results/leafcutter", mode: 'copy'
 
   input:
   path sample
   
   output:
-  path "leafcutter/*.junc"
+  path "${sample.baseName}/*.junc"
   
   shell:
   '''
@@ -13,8 +13,8 @@ process identifyAlternativeSplicingSitesLeafCutter {
   samtools index !{sample}
 
   # 2. Run regtools command
-  regtools junctions extract -s XS -a 8 -m 50 -M 500000 !{sample} \
-  -o leafcutter/!{sample.baseName}.junc
+  mkdir !{sample.baseName}
+  regtools junctions extract -s XS -a 8 -m 50 -M 500000 !{sample} -o !{sample.baseName}/!{sample.baseName}.junc 
   '''
 }
 
