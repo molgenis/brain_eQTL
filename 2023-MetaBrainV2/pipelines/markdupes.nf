@@ -9,7 +9,7 @@ process markduplicates {
   memory '16 GB'
   cpus 1
 
-  // Take an unsorted .BAM as input.
+  // Take a sorted .BAM as input.
   input:
   path bam_file
 
@@ -18,7 +18,7 @@ process markduplicates {
   path "${bam_file.getBaseName()}.bam"
   path "${bam_file.getBaseName()}_dupes.txt"
 
-  // Differing scripts dependong on whether input is single/paired.
+  // Mark duplicates within a sorted .bam file.
   script:
   """
   module load picard
