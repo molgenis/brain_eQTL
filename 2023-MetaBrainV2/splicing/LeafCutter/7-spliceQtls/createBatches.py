@@ -31,6 +31,8 @@ template = sys.argv[8]
 nrgenes = int(sys.argv[9])
 out = sys.argv[10]
 
+os.makedirs(out, exist_ok=True)
+
 print()
 print("-----------------------")
 print("Batch creat0r")
