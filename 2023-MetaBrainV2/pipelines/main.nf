@@ -4,6 +4,10 @@ params.gtfAnnotationFile = ""
 params.sampleDir = ""
 
 process convertBAMToFASTQ {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/fastq", mode: 'copy'
 
   input:
@@ -42,7 +46,7 @@ process convertBAMToFASTQ {
 
 process align {
   // SLURM Params.
-  time '2h'
+  time '6h'
   memory '16 GB'
   cpus 1
 
@@ -72,6 +76,10 @@ process align {
 }
 
 process sortBAM {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/sorted_bam", mode: 'copy'
 
   input:
@@ -88,6 +96,10 @@ process sortBAM {
 
 // Standard process without external user defined output paths.
 process markDuplicates {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   // Take an sorted .BAM as input.
   input:
   path bam_file
@@ -107,6 +119,10 @@ process markDuplicates {
 }
 
 process QCwithRNASeqMetrics {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/rna_seq_metrics", mode: 'copy'
 
   input:
@@ -126,6 +142,10 @@ process QCwithRNASeqMetrics {
 }
 
 process QCwithMultipleMetrics {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/multiple_metrics", mode: 'copy'
 
   input:
@@ -149,6 +169,10 @@ process QCwithMultipleMetrics {
 }
 
 process identifyAlternativeSplicingSitesrMATS {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/rmats", mode: 'copy'
 
   input:
@@ -198,6 +222,10 @@ process identifyAlternativeSplicingSitesrMATS {
 }
 
 process identifyAlternativeSplicingSitesLeafCutter {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/leafcutter", mode: 'copy'
 
   input:
@@ -218,6 +246,10 @@ process identifyAlternativeSplicingSitesLeafCutter {
 }
 
 process convertBAMToCRAM {
+  time '6h'
+  memory '8 GB'
+  cpus 1
+
   publishDir "$projectDir/results/cram", mode: 'copy'
 
   input:
