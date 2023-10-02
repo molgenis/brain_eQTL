@@ -160,19 +160,20 @@ process identifyAlternativeSplicingSitesrMATS {
   shell:
   '''
   # 1. Check if the BAM file is derived from single or paired end reads
-  numFASTQInputFiles=$(samtools view -H !{sample} | \
-  grep "user command line" | \
-  awk -F"user command line:" '{ print $2}' | \
-  grep -o ".fastq.gz\\s\\|.fq.gz\\s\\|.fastq\\s\\|.fqs\\s\\ " | wc -l)
+  numFASTQFiles=$(samtools view -H !{sample} | \
+  grep "@PG" | \
+  tr ' ' '\n' | \
+  grep -oE '(.fq.gz|.fastq.gz|.fq|.fastq)($)' | \
+  wc -l)
 
-  if [ "${numFASTQInputFiles}" -eq 1 ];
+  if [ "${numFASTQFiles}" -eq 1 ]; 
   then
-      end="single"
-  elif [ "${numFASTQInputFiles}" -eq 2 ];
+    end="single"
+  elif [ "${numFASTQFiles}" -gt 1 ];
   then
-      end="paired"
+    end="paired"
   else
-      exit 1;
+    exit 1
   fi
 
   # 2. Check the read length
