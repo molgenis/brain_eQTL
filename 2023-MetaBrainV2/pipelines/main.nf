@@ -2,13 +2,14 @@ params.refFlat = ""
 params.referenceGenome = ""
 params.gtfAnnotationFile = ""
 params.sampleDir = ""
+params.outDir = "$projectDir/results"
 
 process convertBAMToFASTQ {
   time '6h'
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/fastq", mode: 'copy'
+  publishDir "${params.outDir}/fastq", mode: 'copy'
 
   input:
   path sample
@@ -45,7 +46,7 @@ process convertBAMToFASTQ {
 }
 
 process fastqcQualityControl {
-  publishDir "$projectDir/results/fastqc/", mode: 'copy'
+  publishDir "${params.outDir}/fastqc/", mode: 'copy'
 
   input:
   val sample
@@ -97,8 +98,6 @@ process sortBAM {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/sorted_bam", mode: 'copy'
-
   input:
   path sample
 
@@ -140,7 +139,7 @@ process QCwithRNASeqMetrics {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/rna_seq_metrics", mode: 'copy'
+  publishDir "${params.outDir}/rna_seq_metrics", mode: 'copy'
 
   input:
   path sample
@@ -163,7 +162,7 @@ process QCwithMultipleMetrics {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/multiple_metrics", mode: 'copy'
+  publishDir "${params.outDir}/multiple_metrics", mode: 'copy'
 
   input:
   path sample
@@ -190,7 +189,7 @@ process identifyAlternativeSplicingSitesrMATS {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/rmats", mode: 'copy'
+  publishDir "${params.outDir}/rmats", mode: 'copy'
 
   input:
   path sample
@@ -243,7 +242,7 @@ process identifyAlternativeSplicingSitesLeafCutter {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/leafcutter", mode: 'copy'
+  publishDir "${params.outDir}/leafcutter", mode: 'copy'
 
   input:
   path sample
@@ -267,7 +266,7 @@ process convertBAMToCRAM {
   memory '8 GB'
   cpus 1
 
-  publishDir "$projectDir/results/cram", mode: 'copy'
+  publishDir "${params.outDir}/cram", mode: 'copy'
 
   input:
   path sample
