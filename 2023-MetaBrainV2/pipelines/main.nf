@@ -44,6 +44,23 @@ process convertBAMToFASTQ {
   '''
 }
 
+process fastqcQualityControl {
+  publishDir "$projectDir/results/fastqc/", mode: 'copy'
+
+  input:
+  val sample
+
+  output:
+  file "*_fastqc.zip"
+  
+
+  script:
+  """
+  mkdir fastqc
+  fastqc ${sample} -o .
+  """
+}
+
 process align {
   // SLURM Params.
   time '6h'
@@ -267,6 +284,7 @@ process convertBAMToCRAM {
 workflow {
     def bamFiles = Channel.fromPath(params.sampleDir)
     convertBAMToFASTQ(bamFiles)
+    fastqcQualityControl(convertBAMToFASTQ.out)
     align(convertBAMToFASTQ.out)
     sortBAM(align.out.bamFile)
     markDuplicates(sortBAM.out)
