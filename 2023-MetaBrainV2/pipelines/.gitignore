@@ -1,2 +1,6 @@
 refFlat.txt
 test.bam
+files/
+work/
+.nextflow/
+.nextflow.log*

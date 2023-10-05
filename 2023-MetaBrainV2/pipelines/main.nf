@@ -1,47 +1,75 @@
 params.refFlat = ""
 params.referenceGenome = ""
 params.gtfAnnotationFile = ""
-params.sampleDir = ""
+params.sampleFile = ""
 params.outDir = "$projectDir/results"
 
 process convertBAMToFASTQ {
+  // SLURM Params.
   time '6h'
   memory '8 GB'
   cpus 1
-
-  publishDir "${params.outDir}/fastq", mode: 'copy'
-
+  
   input:
-  path sample
+  val sample
   
   output:
-  path "${sample.baseName}"
+  path "fastq_output"
   
   shell:
   '''
-  # 1. Determine if BAM file is single or paired end reads
-  numFASTQFiles=$(samtools view -H !{sample} | \
-  grep "@PG" | \
-  tr ' ' '\n' | \
-  grep -oE '(.fq.gz|.fastq.gz|.fq|.fastq)($)' | \
-  wc -l)
+  # Split the input string by ';' to separate file paths
+  IFS=';' read -r -a sampleFiles <<< "!{sample}"
 
-  # 2. Create command arguments
-  if [ "${numFASTQFiles}" -eq 1 ]; 
-  then
-    arguments="fastq -1 !{sample.baseName}/!{sample.baseName}.fastq !{sample}"
-  elif [ "${numFASTQFiles}" -gt 1 ];
-  then
-    arguments="fastq -1 !{sample.baseName}/!{sample.baseName}_1.fastq -2 !{sample.baseName}/!{sample.baseName}_2.fastq !{sample}"
+  # Split the first path by '.' to separate the extension from the rest of the path
+  IFS='.' read -r -a fileParts <<< "${sampleFiles[0]}"
+
+  # Split the file path by '/' to and get the last part (this is the sample name)
+  IFS='/' read -r -a directories <<< "${fileParts[0]}"
+  sampleName="${directories[-1]}"
+
+  # Clean the path (remove invisble characters)
+  cleaned_path=$(echo "${sampleFiles[0]}" | tr -d '[[:cntrl:]]')
+  
+  # Check if the sample is a .bam file
+  if [[ "$cleaned_path" == *".bam" ]]; then
+    sample=$cleaned_path
+
+    # 1. Determine if BAM file is single or paired end reads
+    numFASTQFiles=$(samtools view -H $cleaned_path | \
+    grep "@PG" | \
+    tr ' ' '\n' | \
+    grep -oE '(.fq.gz|.fastq.gz|.fq|.fastq)($)' | \
+    wc -l)
+
+    # 2. Create command arguments
+    if [[ "${numFASTQFiles}" -eq 1 ]]; 
+    then
+      arguments="fastq -1 fastq_output/${sampleName}.fastq $cleaned_path"
+    elif [[ "${numFASTQFiles}" -gt 1 ]];
+    then
+      arguments="fastq -1 fastq_output/${sampleName}_1.fastq -2 fastq_output/${sample}_2.fastq $cleaned_path"
+    else
+      exit 1
+    fi
+
+    # 3. Make sample directory
+    mkdir fastq_output
+
+    # 4. Run command
+    samtools ${arguments} > /dev/null 2>&1
+
+  # If file is not .bam (so fastq)
   else
-    exit 1
+    # 1. Make output directory
+    mkdir fastq_output
+
+    # 2. Copy the fastq files to the directory
+    for path in "${sampleFiles[@]}"; do
+      strippedPath=$(echo "$path" | tr -d '\\r')
+      cp $strippedPath fastq_output
+    done
   fi
-
-  # 3. Make sample directory
-  mkdir !{sample.baseName}
-
-  # 4. Run command
-  samtools ${arguments} > /dev/null 2>&1
   '''
 }
 
@@ -74,23 +102,34 @@ process align {
 
   // All output files which STAR produces.
   output:
-  path "${sample_dir}/${sample_dir}_Aligned.out.bam", emit: bamFile
-  path "${sample_dir}/${sample_dir}_Log.final.out"
-  path "${sample_dir}/${sample_dir}_Log.progress.out"
-  path "${sample_dir}/${sample_dir}_SJ.out.tab"
+  path "*_Aligned.out.bam", emit: bamFile
+  path "*_Log.final.out"
+  path "*_Log.progress.out"
+  path "*_SJ.out.tab"
 
   // Differing scripts dependong on whether input is single/paired.
-  script:
-  """
-  module load STAR
-  if [[ -f ${sample_dir}/${sample_dir}_2.fastq ]]; then
-    STAR --runThreadN 1 --outFileNamePrefix ${sample_dir}/${sample_dir}_ --outSAMtype BAM Unsorted \
-    --genomeDir ${params.ref_dir} --readFilesIn ${params.samples_dir}/${sample_dir}/${sample_dir}_1.fastq ${params.samples_dir}/${sample_dir}/${sample_dir}_2.fastq
-  else
-    STAR --runThreadN 1 --outFileNamePrefix ${sample_dir}/${sample_dir}_ --outSAMtype BAM Unsorted \
-    --genomeDir ${params.ref_dir} --readFilesIn ${params.samples_dir}/${sample_dir}/${sample_dir}.fastq
-  fi  
-  """
+  shell:
+  '''
+  firstFile=$(ls -1 "!{sample_dir}" | sort | head -n 1)
+
+  IFS='.' read -r -a fileNameParts <<< "${firstFile}"
+  
+  sampleName=${fileNameParts[0]}
+
+  if [[ $sampleName == *_1 || $sampleName == *_2 ]]; then
+    echo 
+    sampleName="${sampleName%??}"
+  fi
+  
+  // module load STAR
+  // if [[ -f !{sample_dir}/!{sample_dir}_2.fastq ]]; then
+  //   STAR --runThreadN 1 --outFileNamePrefix ${sampleName}_ --outSAMtype BAM Unsorted \
+  //   --genomeDir !{params.ref_dir} --readFilesIn !{sample_dir}/${sampleName}_1.fastq !{sample_dir}/${sampleName}_2.fastq
+  // else
+  //   STAR --runThreadN 1 --outFileNamePrefix ${sampleName}_ --outSAMtype BAM Unsorted \
+  //   --genomeDir !{params.ref_dir} --readFilesIn !{sample_dir}/${sampleName}.fastq
+  // fi  
+  '''
 }
 
 process sortBAM {
@@ -281,9 +320,12 @@ process convertBAMToCRAM {
 }
 
 workflow {
-    def bamFiles = Channel.fromPath(params.sampleDir)
-    convertBAMToFASTQ(bamFiles)
-    fastqcQualityControl(convertBAMToFASTQ.out)
+    String samplePaths = new File(params.sampleFile).text
+    String[] samplePathsList = samplePaths.split('\n')
+    samples = Channel.from(samplePathsList)
+
+    convertBAMToFASTQ(samples)
+    // fastqcQualityControl(convertBAMToFASTQ.out)
     align(convertBAMToFASTQ.out)
     sortBAM(align.out.bamFile)
     markDuplicates(sortBAM.out)
