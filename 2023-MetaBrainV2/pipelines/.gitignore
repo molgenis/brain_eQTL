@@ -4,3 +4,4 @@ files/
 work/
 .nextflow/
 .nextflow.log*
+nextflow.config
