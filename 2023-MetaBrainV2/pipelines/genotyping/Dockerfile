@@ -43,6 +43,7 @@ RUN apt-get update -y \
         make=4.3-4.1build1 \
         unzip \
         # Tools
+        fastqc=0.11.9+dfsg-6 \
         # Other
         ca-certificates=20230311ubuntu0.23.04.1 \
         zlib1g-dev=1:1.2.13.dfsg-1ubuntu4
@@ -52,8 +53,9 @@ RUN apt-get update -y \
 # VCFTools 0.1.13 Install
 RUN cd /tmp/init \
     wget -O vcftools.tar.gz https://sourceforge.net/projects/vcftools/files/vcftools_0.1.13.tar.gz \
-    && tar -xzf vcftools.tar.gz \
+    && tar -xzf /tmp/init/vcftools.tar.gz \
     && cd vcftools_0.1.13/ \
+    && ls \
     && make \
     && make install \
     && mv bin/* /usr/bin/ \

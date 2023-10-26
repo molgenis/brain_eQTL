@@ -1,12 +1,10 @@
 nextflow.enable.dsl=2
 
-params.refFlat = "/groups/umcg-biogen/tmp01/annotation/GeneReference/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.primary_assembly.annotation.collapsedGenes.refflat"
 params.referenceGenome = "/groups/umcg-biogen/tmp01/annotation/GeneReference/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/GRCh38.primary_assembly.genome.fa"
-params.gtfAnnotationFile = "/groups/umcg-biogen/tmp01/annotation/GeneReference/ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.primary_assembly.annotation.collapsedGenes.gtf.gz"
-params.sampleFile = "/groups/umcg-biogen/tmp01/umcg-jbakker/samples.txt"
 params.outDir = "/groups/umcg-biogen/tmp01/umcg-jbakker/results"
-params.bamDir1 = "/groups/umcg-biogen/tmp01/input/rawdata/2023-TargetALS/RNA_BAM/CGND_12616/Project_CGND_12616_B03_EXS_Lane.bam.2018-09-10/Sample_CGND-HRA-00076-v2-2-grch38/analysis/CGND-HRA-00076-v2-2-grch38.final.bam"
 params.bamDir = "/groups/umcg-fg/tmp01/projects/downstreamer/2023-09-PublicRNASeqGenotypeCalls/metabrain/2023-MetaBrainV2/pipelines/genotyping/bam"
+params.knownSites = "/groups/umcg-fg/tmp01/projects/downstreamer/2023-09-PublicRNASeqGenotypeCalls/variants/GCF_000001405.40.new.gz"
+params.knownSitesIndex = "/groups/umcg-fg/tmp01/projects/downstreamer/2023-09-PublicRNASeqGenotypeCalls/variants/GCF_000001405.40.new.gz.tbi"
 
 def getEncoding(bam_file) {
   """
@@ -14,6 +12,76 @@ def getEncoding(bam_file) {
   unzip fastqc/*.zip -d unzipped
   unzipped/*/fastqc_data.txt
   sed '6!d' unzipped/*/fastqc_data.txt | cut -d " " -f 4
+  """
+}
+
+process indexBam {
+  containerOptions '--bind /groups/'
+  time '6h'
+  memory '16 GB'
+  cpus 1
+  
+  output:
+  path "indexBam/${bam_file.baseName}.bai"
+
+  input:
+  path bam_file
+
+  script:
+  """
+  mkdir indexBam
+  gatk --java-options "-Xmx64g" BuildBamIndex \
+  I=${bam_file} \
+  O=indexBam/${bam_file.baseName}.bai
+  """
+}
+
+process indexVcf {
+  containerOptions '--bind /groups/'
+  time '6h'
+  memory '64 GB'
+  cpus 1
+  
+  output:
+  path "indexVcf/*"
+
+  input:
+  path vcf_file
+
+  script:
+  """
+  mkdir indexVcf
+  gatk --java-options "-Xmx64g" IndexFeatureFile \
+  --arguments_file ${vcf_file}
+  """
+}
+
+process encodeConvert {
+  containerOptions '--bind /groups/'
+  time '6h'
+  memory '16 GB'
+  cpus 1
+
+  input:
+  path sample_bam
+  
+  output:
+  path "fixed/${sample_bam.baseName}.bam"
+  
+  script:
+  """
+  mkdir fastqc unzipped fixed
+  fastqc ${sample_bam} --outdir fastqc
+  unzip fastqc/*.zip -d unzipped
+  num=\$(sed '6!d' unzipped/${sample_bam.baseName}_fastqc/fastqc_data.txt | cut -d " " -f 4)
+  if [ echo "\$num < 1.8" | bc ]  
+  then
+      gatk --java-options "-Xmx16g" FixMisencodedBaseQualityReads \
+      -I ${sample_bam} \
+      -O fixed/${sample_bam.baseName}.bam
+  else
+      mv ${sample_bam} fixed
+  fi
   """
 }
 
@@ -37,27 +105,6 @@ process createSeqDict {
   """
 }
 
-process fixMisencodedBaseQualityReads {
-  containerOptions '--bind /groups/'
-  time '6h'
-  memory '16 GB'
-  cpus 1
-
-  input:
-  path sample_bam
-  
-  output:
-  path "fixed/${sample_bam.baseName}-fixed.bam"
-  
-  shell:
-  """
-  mkdir fixed
-  gatk --java-options "-Xmx16g" FixMisencodedBaseQualityReads \
-  -I ${sample_bam} \
-  -O fixed/${sample_bam.baseName}-fixed.bam \
-  """
-}
-
 process splitNCigarReads {
   containerOptions '--bind /groups/'
   time '6h'
@@ -70,42 +117,63 @@ process splitNCigarReads {
   output:
   path "split/${sample_bam.baseName}-splitreads.bam"
   
-  shell:
+  script:
   """
-
-  samtools view ${markDuplicatesBam} | \
-    head -1000000 | \
-    awk '{gsub(/./,"&\n",$11);print $11}'| \
-    sort -u| \
-    perl -wne '
-    $_=ord($_);
-    print $_."\n"if(not($_=~/10/));' | \
-    sort -n | \
-    perl -wne '
-    use strict;
-    use List::Util qw/max min/;
-    my @ords=<STDIN>;
-    if(min(@ords) >= 59 && max(@ords) <=104 ){
-      print " --fix_misencoded_quality_scores ";
-      warn "Illumina <= 1.7 scores detected using:--fix_misencoded_quality_scores.\n";
-    }elsif(min(@ords) >= 33 && max(@ords) <= 74){
-	  print " ";
-	  warn "quals > illumina 1.8 detected no action to take.\n";
-    }elsif(min(@ords) >= 33 && max(@ords) <= 80){
-	  print " --allow_potentially_misencoded_quality_scores ";
-	  warn "Strange illumina like quals detected using:--allow_potentially_misencoded_quality_scores."
-    }else{
-	  die "Cannot estimate quality scores here is the list:".join(",",@ords)."\n";
-    }
-  ')
-
-
   mkdir split
   gatk --java-options "-Xmx16g" SplitNCigarReads \
   -R ${params.referenceGenome}\
   -I ${sample_bam} \
   -O split/${sample_bam.baseName}-splitreads.bam \
-  --fix_misencoded_quality_scores
+  """
+}
+
+process baseRecalibrator {
+  containerOptions '--bind /groups/'
+  time '6h'
+  memory '16 GB'
+  cpus 1
+
+  input:
+  path split_bam
+  path vcf_index
+  path bam_index
+  
+  output:
+  path "recal/${split_bam.baseName}.table"
+  
+  script:
+  """
+  mkdir recal
+  gatk --java-options "-Xmx16g" BaseRecalibrator \
+  -I ${split_bam} \
+  -R ${params.referenceGenome} \
+  --known-sites ${params.knownSites} \
+  -O recal/${split_bam.baseName}.table
+  """
+}
+
+process printReads {
+  containerOptions '--bind /groups/'
+  time '6h'
+  memory '16 GB'
+  cpus 1
+
+  input:
+  path sample_bam
+  path vcf_index
+
+  output:
+  path "preads/${sample_bam.baseName}.bam"
+  
+  script:
+  """
+  mkdir preads
+  gatk --java-options "-Xmx16g" PrintReads \
+  -R ${params.referenceGenome}  \
+  -I ${sample_bam} \
+  -o preads/${sample_bam.baseName} \
+  -BQSR ${table_file} \
+  -nct 2
   """
 }
 
@@ -197,14 +265,18 @@ process jointGenotype {
   -ERC GVCF
   """
 }
-
+;
 
 workflow {
     bam_files = Channel.fromPath("${params.bamDir}/*.bam")
-    splitNCigarReads(bam_files) 
-    haplotypeCaller(splitNCigarReads.output)
+    //indexVcf(params.knownSites)
+    indexBam(bam_files)
+    encodeConvert(bam_files)
+    splitNCigarReads(encodeConvert.output) 
+    baseRecalibrator(splitNCigarReads.output, params.knownSitesIndex, indexBam.output)
+    printReads(splitNCigarReads.output, baseRecalibrator.output)
+    haplotypeCaller(printReads.output)
     indexGvcf(haplotypeCaller.output)
     combineGvcf(haplotypeCaller.output)
-    
     //indexGvcf(gvcf_files)
 }
