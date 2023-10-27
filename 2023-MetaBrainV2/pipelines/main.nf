@@ -11,12 +11,14 @@ process convertBAMToFASTQ {
   val sample
   
   output:
-  path "fastq_output"
+  path "fastq_output", emit: fastqPath
+  val "${sample[1]}", emit: sampleName
+  val task.workDir, emit: workDir
   
   shell:
   '''
   # Split the input string by ';' to separate file paths
-  IFS=';' read -r -a sampleFiles <<< "!{sample}"
+  IFS=';' read -r -a sampleFiles <<< "!{sample[0]}"
 
   # Get the extension of the sample
   extension=$(awk -F '.' '{print $NF}' <<< "${sampleFiles[0]}")
@@ -46,10 +48,10 @@ process convertBAMToFASTQ {
     # 3. Create command arguments
     if [[ "${numFASTQFiles}" -eq 1 ]]; 
     then
-      arguments="fastq -0 fastq_output/${sampleName}.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -0 fastq_output/!{sample[1]}.fastq.gz -n sorted_${sampleName}.bam"
     elif [ "${numFASTQFiles}" -gt 1 ];
     then
-      arguments="fastq -1 fastq_output/${sampleName}_1.fastq.gz -2 fastq_output/${sampleName}_2.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -1 fastq_output/!{sample[1]}_1.fastq.gz -2 fastq_output/!{sample[1]}_2.fastq.gz -n sorted_${sampleName}.bam"
     else
       exit 1
     fi
@@ -84,15 +86,18 @@ process fastqcQualityControl {
 
   input:
   val fastqDir
+  val sampleName
 
   output:
-  file "*_fastqc.zip"
-  
+  file "${sampleName}/*_fastqc.zip"
+  val task.workDir, emit: workDir
 
   shell:
   '''
+  mkdir !{sampleName}
+
   for file in !{fastqDir}/*; do
-    fastqc ${file} -o . --noextract
+    fastqc ${file} -o !{sampleName} --noextract
   done
   '''
 }
@@ -106,16 +111,19 @@ process alignWithSTAR {
   cpus 4
 
   input:
-  path sample_dir
+  path sampleDir
+  val sampleName
 
   output:
   path "*/*_Aligned.out.bam", emit: bamFile
   path "*/*.gz"
+  val sampleName, emit: sampleName
+  val task.workDir, emit: workDir
 
   shell:
   '''
   # Get path of the first file in the input directory
-  firstFile=$(ls -1 "!{sample_dir}" | sort | head -n 1)
+  firstFile=$(ls -1 "!{sampleDir}" | sort | head -n 1)
 
   # Extract sample name from the file path
   IFS='/' read -r -a directories <<< "${firstFile}"
@@ -134,10 +142,10 @@ process alignWithSTAR {
   fi
 
   # Create output directory
-  mkdir ${sampleName}
+  mkdir !{sampleName}
 
   # Determine allowed number of mismatches based on read length
-  readLength=$(samtools view !{sample_dir}/${firstFile} |head -n1 |awk '{print $10}'|tr -d "\\n" |wc -m)
+  readLength=$(samtools view !{sampleDir}/${firstFile} |head -n1 |awk '{print $10}'|tr -d "\\n" |wc -m)
 
   if [ $readLength -ge 90 ]; then
     numMism=4
@@ -148,11 +156,11 @@ process alignWithSTAR {
   fi
 
   # Set different --readFilesIn values for paired and single end
-  if [[ -f !{sample_dir}/${sampleName}_2.fastq ]]; then
+  if [[ -f !{sampleDir}/${sampleName}_2.fastq.gz ]]; then
      let numMism=$numMism*2
-     readFilesInArgument="--readFilesIn !{sample_dir}/${sampleName}_1.fastq.gz !{sample_dir}/${sampleName}_2.fastq.gz"
+     readFilesInArgument="--readFilesIn !{sampleDir}/${sampleName}_1.fastq.gz !{sampleDir}/${sampleName}_2.fastq.gz"
   else
-     readFilesInArgument="--readFilesIn !{sample_dir}/${sampleName}.fastq.gz"
+     readFilesInArgument="--readFilesIn !{sampleDir}/${sampleName}.fastq.gz"
   fi
 
   # Run the STAR command
@@ -183,20 +191,23 @@ process sortBAM {
   cpus 1
 
   input:
-  path sample
+  path samplePath
+  val sampleName
 
   output:
-  path "${sample.baseName}.sorted.bam"
+  path "${sampleName}.sorted.bam", emit: bamFile
+  val sampleName, emit: sampleName
+  val task.workDir, emit: workDir
   
   script:
   """
-  samtools sort $sample -o ${sample.baseName}.sorted.bam
+  samtools sort ${samplePath} -o ${sampleName}.sorted.bam
   """
 }
 
 process markDuplicates {
   containerOptions "--bind ${params.bindFolder}"
-  publishDir "${params.outDir}/mark_duplicates/", mode: 'copy', pattern: "*.{gz}"
+  publishDir "${params.outDir}/mark_duplicates/", mode: 'copy', pattern: "*/*.{gz}"
 
   time '6h'
   memory '12 GB'
@@ -204,19 +215,24 @@ process markDuplicates {
 
   input:
   path bam_file
+  val sampleName
 
   output:
-  path "${bam_file.getBaseName()}.dupes.bam", emit: bamFile
-  path "${bam_file.getBaseName()}_dupes.txt.gz"
+  path "${sampleName}/${sampleName}.duplicates.bam", emit: bamFile
+  path "${sampleName}/${sampleName}_duplicates.txt.gz"
+  val sampleName, emit: sampleName
+  val task.workDir, emit: workDir
 
   script:
   """
+  mkdir ${sampleName}
+
   java -Xmx10g -jar /usr/bin/picard.jar MarkDuplicates \
       I=${bam_file} \
-      O=${bam_file.getBaseName()}.dupes.bam \
-      M=${bam_file.getBaseName()}_dupes.txt
+      O=${sampleName}/${sampleName}.duplicates.bam \
+      M=${sampleName}/${sampleName}_duplicates.txt
 
-  gzip ${bam_file.getBaseName()}_dupes.txt
+  gzip ${sampleName}/${sampleName}_duplicates.txt
   """
 }
 
@@ -230,16 +246,23 @@ process QCwithRNASeqMetrics {
   publishDir "${params.outDir}/rna_seq_metrics", mode: 'copy'
 
   input:
-  path sample
+  path samplePath
+  val sampleName
 
   output:
-  path "${sample.baseName}_rnaseqmetrics"
+  path "${sampleName}/${sampleName}_rnaseqmetrics"
+  path "${sampleName}/${sampleName}.chart.pdf"
+  val sampleName
+  val task.workDir, emit: workDir
   
   script:
   """
+  mkdir ${sampleName}
+
   java -Xmx10g -jar /usr/bin/picard.jar CollectRnaSeqMetrics \
-  I=${sample} \
-  O=${sample.baseName}_rnaseqmetrics \
+  I=${samplePath} \
+  O=${sampleName}/${sampleName}_rnaseqmetrics \
+  CHART_OUTPUT=${sampleName}/${sampleName}.chart.pdf \
   REF_FLAT=${params.refFlat} \
   STRAND=NONE \
   RIBOSOMAL_INTERVALS=${params.ribosomalIntervalList}
@@ -256,17 +279,19 @@ process QCwithMultipleMetrics {
   publishDir "${params.outDir}/multiple_metrics", mode: 'copy'
 
   input:
-  path sample
+  path samplePath
+  val sampleName
 
   output:
-  path "${sample.baseName}/*"
+  path "${sampleName}/*"
+  val task.workDir, emit: workDir
   
   script:
   """
-  mkdir ${sample.baseName}
+  mkdir ${sampleName}
   
-  java -Xmx10g -jar /usr/bin/picard.jar CollectMultipleMetrics I=${sample} \
-  O=${sample.baseName}/multiple_metrics \
+  java -Xmx10g -jar /usr/bin/picard.jar CollectMultipleMetrics I=${samplePath} \
+  O=${sampleName}/multiple_metrics \
   R=${params.referenceGenome} \
   PROGRAM=CollectAlignmentSummaryMetrics \
   PROGRAM=QualityScoreDistribution \
@@ -285,15 +310,17 @@ process identifyAlternativeSplicingSitesrMATS {
   publishDir "${params.outDir}/rmats", mode: 'copy'
 
   input:
-  path sample
+  path samplePath
+  val sampleName
   
   output:
-  path "${sample.baseName}/*.txt.gz"
+  path "${sampleName}/*.txt.gz"
+  val task.workDir, emit: workDir
   
   shell:
   '''
   # 1. Check if the BAM file is derived from single or paired end reads
-  numFASTQFiles=$(samtools view -H !{sample} | \
+  numFASTQFiles=$(samtools view -H !{samplePath} | \
   grep "@PG" | \
   tr ' ' '\n' | \
   grep -oE '(.fq.gz|.fastq.gz|.fq|.fastq)($)' | \
@@ -310,23 +337,23 @@ process identifyAlternativeSplicingSitesrMATS {
   fi
 
   # 2. Check the read length
-  readLength=$(samtools view !{sample} |head -n1 |awk '{print $10}'|tr -d "\\n" |wc -m)
+  readLength=$(samtools view !{samplePath} |head -n1 |awk '{print $10}'|tr -d "\\n" |wc -m)
 
   # 3. Create config file
-  echo !sample > config.txt
+  echo !{samplePath} > config.txt
 
   # 4. Run rMATS command
   python /usr/bin/rmats_turbo_v4_1_2/rmats.py --b1 config.txt \
   --gtf !{params.gtfAnnotationFile} \
   --readLength ${readLength} \
-  --od !{sample.baseName} \
+  --od !{sampleName} \
   --tmp rmats_tmp \
   --task both \
   -t ${end}  \
   --statoff
 
   # 5. Gzip all output files
-  gzip !{sample.baseName}/*.txt
+  gzip !{sampleName}/*.txt
   '''
 }
 
@@ -340,19 +367,21 @@ process identifyAlternativeSplicingSitesLeafCutter {
   publishDir "${params.outDir}/leafcutter", mode: 'copy'
 
   input:
-  path sample
+  path samplePath
+  val sampleName
   
   output:
-  path "${sample.baseName}/*.junc"
+  path "${sampleName}/*.junc"
+  val task.workDir, emit: workDir
   
   shell:
   '''
   # 1. Index BAM file
-  samtools index !{sample}
+  samtools index !{samplePath}
 
   # 2. Run regtools command
-  mkdir !{sample.baseName}
-  regtools junctions extract -s XS -a 8 -m 50 -M 500000 !{sample} -o !{sample.baseName}/!{sample.baseName}.junc 
+  mkdir !{sampleName}
+  regtools junctions extract -s XS -a 8 -m 50 -M 500000 !{samplePath} -o !{sampleName}/!{sampleName}.junc 
   '''
 }
 
@@ -366,32 +395,151 @@ process convertBAMToCRAM {
   publishDir "${params.outDir}/cram", mode: 'copy'
 
   input:
-  path sample
+  path samplePath
+  val sampleName
   
   output:
-  path "${sample.baseName}.cram"
+  path "${sampleName}/${sampleName}.cram"
+  val task.workDir, emit: workDir
   
   script:
   """
-  samtools view -T ${params.referenceGenome} -C -o ${sample.baseName}.cram ${sample}
+  mkdir ${sampleName}
+  samtools view -T ${params.referenceGenome} -C -o ${sampleName}/${sampleName}.cram ${samplePath}
+  """
+}
+
+def extractSampleName(String path) {
+    // Split the path by ';' to handle multiple paths
+    def paths = path.split(';')
+
+    // Initialize a set to store unique sample names
+    Set<String> sampleNameSet = new HashSet<>()
+    
+    // Extract and process the sample names for each path
+    paths.each { pathPart ->
+        // Extract the sample name and remove _1 or _2 if present
+        def sampleNamePart = pathPart.tokenize("/").last().replaceAll(/\.(fastq|fq|bam|gz)/, '').replaceAll(/_(1|2)$/, '')
+        
+        // Add the cleaned sample name to the set
+        sampleNameSet << sampleNamePart
+    }
+    
+    // Join the unique sample names with '_'
+    def sampleName = sampleNameSet.join("_")
+    
+    return sampleName
+}
+
+def checkIfSampleIsProcessed(String folderName, String sampleName) {
+    // An array containing all the folders that are expected for a succesful pipeline run for a sample
+    def expectedFolders = [
+        folderName + '/fastqc/' + sampleName,
+        folderName + '/star/' + sampleName,
+        folderName + '/multiple_metrics/' + sampleName,
+        folderName + '/rna_seq_metrics/' + sampleName,
+        folderName + '/rmats/' + sampleName,
+        folderName + '/mark_duplicates/' + sampleName,
+        folderName + '/cram/' + sampleName,
+    ];
+
+    // An array containing the expected number of files in order of the folders above
+    def expectedNumberOfFiles = [1, 5, 8, 2, 36, 1, 1];
+
+    // Loop through expected folders and number of expected files
+    for (int i = 0; i < expectedNumberOfFiles.size; i++) {
+        
+        // Return false if the expected folder does not exist
+        if (!new File(expectedFolders[i]).exists()) {
+           return false;
+        }
+
+        // Return flase if the number of items in folder does not match expected number of items
+        if (new File(expectedFolders[i]).list().length < expectedNumberOfFiles[i]){
+           return false;
+        }
+      }
+
+      return true;
+}
+
+process removeWorkDirs {
+  containerOptions "--bind ${params.bindFolder}"
+
+  time '1h'
+  memory '1 GB'
+  cpus 1
+
+  input:
+  val bamToFastqWorkDir
+  val fastQCWorkDir
+  val alignWithStarWorkDir
+  val sortBamWorkDir
+  val markDuplicatesWorkDir
+  val QCwithRNASeqMetricsWorkDir
+  val QCwithMultipleMetricsWorkDir
+  val identifyAlternativeSplicingSitesrMATSWorkDir
+  val identifyAlternativeSplicingSitesLeafCutterWorkDir
+  val convertBAMToCRAMWorkDir
+  
+  script:
+  """
+  sleep 5
+  rm -r ${bamToFastqWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${fastQCWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${alignWithStarWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${sortBamWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${markDuplicatesWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${QCwithRNASeqMetricsWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${QCwithMultipleMetricsWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${identifyAlternativeSplicingSitesrMATSWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${identifyAlternativeSplicingSitesLeafCutterWorkDir} || echo 'Failed to remove work directory'
+  rm -r ${convertBAMToCRAMWorkDir} || echo 'Failed to remove work directory'
   """
 }
 
 workflow {
-    // Load sample list from text file
+    // Load list with sample paths from the input text file
     String samplePaths = new File(params.sampleFile).text
-    String[] samplePathsList = samplePaths.split('\n')
-    samples = Channel.from(samplePathsList)
+    String[] samplePathsArray = samplePaths.split('\n')
+
+    // Create a list of sample names extracted from the sample paths
+    List<String> sampleNamesList = samplePathsArray.collect { extractSampleName(it) }
+    String[] sampleNamesArray = sampleNamesList as String[]
+    
+    // Create channels of the sample paths and sample names
+    samplePathsChannel = Channel.of(samplePathsArray)
+    sampleNamesChannel = Channel.of(sampleNamesArray)
+
+    // Merge the channels
+    mergedChannel = samplePathsChannel.merge(sampleNamesChannel)
+
+    // Remove samples from the channel that are already in the output folder
+    filteredChannel = mergedChannel.filter { !checkIfSampleIsProcessed(params.outDir, it[1]) }
 
     // Run pipeline
-    convertBAMToFASTQ(samples)
-    fastqcQualityControl(convertBAMToFASTQ.out)
-    alignWithSTAR(convertBAMToFASTQ.out)
-    sortBAM(alignWithSTAR.out.bamFile)
-    markDuplicates(sortBAM.out)
-    QCwithRNASeqMetrics(markDuplicates.out.bamFile)
-    QCwithMultipleMetrics(markDuplicates.out.bamFile)
-    identifyAlternativeSplicingSitesrMATS(markDuplicates.out.bamFile)
-    identifyAlternativeSplicingSitesLeafCutter(markDuplicates.out.bamFile)
-    convertBAMToCRAM(markDuplicates.out.bamFile)
+    convertBAMToFASTQ(mergedChannel)
+    fastqcQualityControl(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
+    alignWithSTAR(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
+    sortBAM(alignWithSTAR.out.bamFile, alignWithSTAR.out.sampleName)
+    markDuplicates(sortBAM.out.bamFile, sortBAM.out.sampleName)
+    QCwithRNASeqMetrics(markDuplicates.out.bamFile, markDuplicates.out.sampleName)
+    QCwithMultipleMetrics(markDuplicates.out.bamFile, markDuplicates.out.sampleName)
+    identifyAlternativeSplicingSitesrMATS(markDuplicates.out.bamFile, markDuplicates.out.sampleName)
+    identifyAlternativeSplicingSitesLeafCutter(markDuplicates.out.bamFile, markDuplicates.out.sampleName)
+    convertBAMToCRAM(markDuplicates.out.bamFile, markDuplicates.out.sampleName)
+
+    // Remove all work directories for sample
+    removeWorkDirs(
+      convertBAMToFASTQ.out.workDir,
+      fastqcQualityControl.out.workDir,
+      alignWithSTAR.out.workDir,
+      sortBAM.out.workDir,
+      markDuplicates.out.workDir,
+      QCwithRNASeqMetrics.out.workDir,
+      QCwithMultipleMetrics.out.workDir,
+      identifyAlternativeSplicingSitesrMATS.out.workDir,
+      identifyAlternativeSplicingSitesLeafCutter.out.workDir,
+      convertBAMToCRAM.out.workDir,
+    )
 }

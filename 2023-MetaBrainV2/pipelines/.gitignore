@@ -1,5 +1,5 @@
 refFlat.txt
-test.bam
+*.bam
 files/
 work/
 .nextflow/
