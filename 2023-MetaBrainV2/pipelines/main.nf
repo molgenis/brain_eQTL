@@ -2,23 +2,25 @@ nextflow.enable.dsl=2
 
 process convertBAMToFASTQ {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '8 GB'
   cpus 1
   
   input:
-  val sample
+  val samplePath
+  val sampleName
   
   output:
   path "fastq_output", emit: fastqPath
-  val "${sample[1]}", emit: sampleName
+  val sampleName, emit: sampleName
   val task.workDir, emit: workDir
   
   shell:
   '''
   # Split the input string by ';' to separate file paths
-  IFS=';' read -r -a sampleFiles <<< "!{sample[0]}"
+  IFS=';' read -r -a sampleFiles <<< "!{samplePath}"
 
   # Get the extension of the sample
   extension=$(awk -F '.' '{print $NF}' <<< "${sampleFiles[0]}")
@@ -48,10 +50,10 @@ process convertBAMToFASTQ {
     # 3. Create command arguments
     if [[ "${numFASTQFiles}" -eq 1 ]]; 
     then
-      arguments="fastq -0 fastq_output/!{sample[1]}.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -0 fastq_output/!{sampleName}.fastq.gz -n sorted_${sampleName}.bam"
     elif [ "${numFASTQFiles}" -gt 1 ];
     then
-      arguments="fastq -1 fastq_output/!{sample[1]}_1.fastq.gz -2 fastq_output/!{sample[1]}_2.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -1 fastq_output/!{sampleName}_1.fastq.gz -2 fastq_output/!{sampleName}_2.fastq.gz -n sorted_${sampleName}.bam"
     else
       exit 1
     fi
@@ -79,6 +81,7 @@ process convertBAMToFASTQ {
 process fastqcQualityControl {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/fastqc/", mode: 'copy'
+  errorStrategy 'retry'
 
   time '6h'
   memory '8 GB'
@@ -105,6 +108,7 @@ process fastqcQualityControl {
 process alignWithSTAR {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/star/", mode: 'copy', pattern: "*/*.{gz}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '50 GB'
@@ -185,6 +189,7 @@ process alignWithSTAR {
 
 process sortBAM {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '8 GB'
@@ -208,6 +213,7 @@ process sortBAM {
 process markDuplicates {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/mark_duplicates/", mode: 'copy', pattern: "*/*.{gz}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '12 GB'
@@ -238,6 +244,7 @@ process markDuplicates {
 
 process QCwithRNASeqMetrics {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '12 GB'
@@ -250,8 +257,8 @@ process QCwithRNASeqMetrics {
   val sampleName
 
   output:
-  path "${sampleName}/${sampleName}_rnaseqmetrics"
-  path "${sampleName}/${sampleName}.chart.pdf"
+  path "${sampleName}/${sampleName}_rnaseqmetrics.gz"
+  path "${sampleName}/${sampleName}.chart.pdf.gz"
   val sampleName
   val task.workDir, emit: workDir
   
@@ -266,11 +273,14 @@ process QCwithRNASeqMetrics {
   REF_FLAT=${params.refFlat} \
   STRAND=NONE \
   RIBOSOMAL_INTERVALS=${params.ribosomalIntervalList}
+
+  gzip ${sampleName}/*
   """
 }
 
 process QCwithMultipleMetrics {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '12 GB'
@@ -296,12 +306,15 @@ process QCwithMultipleMetrics {
   PROGRAM=CollectAlignmentSummaryMetrics \
   PROGRAM=QualityScoreDistribution \
   PROGRAM=MeanQualityByCycle \
-  PROGRAM=CollectInsertSizeMetrics \
+  PROGRAM=CollectInsertSizeMetrics 
+
+  gzip ${sampleName}/*
   """
 }
 
 process identifyAlternativeSplicingSitesrMATS {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '8 GB'
@@ -359,6 +372,7 @@ process identifyAlternativeSplicingSitesrMATS {
 
 process identifyAlternativeSplicingSitesLeafCutter {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '8 GB'
@@ -371,7 +385,7 @@ process identifyAlternativeSplicingSitesLeafCutter {
   val sampleName
   
   output:
-  path "${sampleName}/*.junc"
+  path "${sampleName}/*.junc.gz"
   val task.workDir, emit: workDir
   
   shell:
@@ -382,11 +396,15 @@ process identifyAlternativeSplicingSitesLeafCutter {
   # 2. Run regtools command
   mkdir !{sampleName}
   regtools junctions extract -s XS -a 8 -m 50 -M 500000 !{samplePath} -o !{sampleName}/!{sampleName}.junc 
+
+  # 3. Gzip the resulting junctions file
+  gzip !{sampleName}/!{sampleName}.junc
   '''
 }
 
 process convertBAMToCRAM {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '6h'
   memory '10 GB'
@@ -432,6 +450,8 @@ def extractSampleName(String path) {
 }
 
 def checkIfSampleIsProcessed(String folderName, String sampleName) {
+    sampleName = extractSampleName(sampleName)
+    
     // An array containing all the folders that are expected for a succesful pipeline run for a sample
     def expectedFolders = [
         folderName + '/fastqc/' + sampleName,
@@ -459,12 +479,12 @@ def checkIfSampleIsProcessed(String folderName, String sampleName) {
            return false;
         }
       }
-
       return true;
 }
 
 process removeWorkDirs {
   containerOptions "--bind ${params.bindFolder}"
+  errorStrategy 'retry'
 
   time '1h'
   memory '1 GB'
@@ -511,14 +531,12 @@ workflow {
     samplePathsChannel = Channel.of(samplePathsArray)
     sampleNamesChannel = Channel.of(sampleNamesArray)
 
-    // Merge the channels
-    mergedChannel = samplePathsChannel.merge(sampleNamesChannel)
-
-    // Remove samples from the channel that are already in the output folder
-    filteredChannel = mergedChannel.filter { !checkIfSampleIsProcessed(params.outDir, it[1]) }
+    // Remove samples from the channels that are already in the output folder
+    filteredPathsChannel = samplePathsChannel.filter { !checkIfSampleIsProcessed(params.outDir, it) }
+    filteredNamesChannel = sampleNamesChannel.filter { !checkIfSampleIsProcessed(params.outDir, it) }
 
     // Run pipeline
-    convertBAMToFASTQ(mergedChannel)
+    convertBAMToFASTQ(filteredPathsChannel, filteredNamesChannel)
     fastqcQualityControl(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
     alignWithSTAR(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
     sortBAM(alignWithSTAR.out.bamFile, alignWithSTAR.out.sampleName)
