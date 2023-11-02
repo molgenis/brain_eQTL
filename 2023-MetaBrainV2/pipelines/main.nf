@@ -3,6 +3,7 @@ nextflow.enable.dsl=2
 process convertBAMToFASTQ {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '8 GB'
@@ -82,6 +83,7 @@ process fastqcQualityControl {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/fastqc/", mode: 'copy'
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '8 GB'
@@ -109,6 +111,7 @@ process alignWithSTAR {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/star/", mode: 'copy', pattern: "*/*.{gz}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '50 GB'
@@ -190,6 +193,7 @@ process alignWithSTAR {
 process sortBAM {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '8 GB'
@@ -214,6 +218,7 @@ process markDuplicates {
   containerOptions "--bind ${params.bindFolder}"
   publishDir "${params.outDir}/mark_duplicates/", mode: 'copy', pattern: "*/*.{gz}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '12 GB'
@@ -245,6 +250,7 @@ process markDuplicates {
 process QCwithRNASeqMetrics {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '12 GB'
@@ -281,6 +287,7 @@ process QCwithRNASeqMetrics {
 process QCwithMultipleMetrics {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '12 GB'
@@ -315,6 +322,7 @@ process QCwithMultipleMetrics {
 process identifyAlternativeSplicingSitesrMATS {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '8 GB'
@@ -373,6 +381,7 @@ process identifyAlternativeSplicingSitesrMATS {
 process identifyAlternativeSplicingSitesLeafCutter {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '8 GB'
@@ -405,6 +414,7 @@ process identifyAlternativeSplicingSitesLeafCutter {
 process convertBAMToCRAM {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '6h'
   memory '10 GB'
@@ -485,6 +495,7 @@ def checkIfSampleIsProcessed(String folderName, String sampleName) {
 process removeWorkDirs {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
+  maxRetries 999
 
   time '1h'
   memory '1 GB'
