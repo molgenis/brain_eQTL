@@ -145,7 +145,6 @@ process wgsQC {
 
 process convertVCFToPlink {
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -184,7 +183,6 @@ process convertVCFToPlink {
 process mergePlinkFiles {
   publishDir "${params.outDir}/1_merge_plink/", mode: 'copy'
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '12 GB'
@@ -236,7 +234,6 @@ process mergePlinkFiles {
 process calculateAlleleFrequencies {
   publishDir "${params.outDir}/2_calculate_allele_frequencies/", mode: 'copy', pattern: "*.{log, gz}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -288,7 +285,6 @@ process plotTargetAndRefAlleleFrequencies {
 process snpAndGenotypeQC {
   publishDir "${params.outDir}/4_snp_and_genotype_qc/", mode: 'copy', pattern: "*.{log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -326,7 +322,6 @@ process snpAndGenotypeQC {
 process sexCheck {
   publishDir "${params.outDir}/5_sex_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '12 GB'
@@ -394,7 +389,6 @@ process sexCheck {
 process heterozygosityCheck {
   publishDir "${params.outDir}/6_het_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -451,7 +445,6 @@ process heterozygosityCheck {
 process projectSamplesToRefPanel {
   publishDir "${params.outDir}/7_project_samples_to_ref_panel/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '16 GB'
@@ -478,7 +471,6 @@ process projectSamplesToRefPanel {
 process relatednessCheck {
   publishDir "${params.outDir}/8_relatedness_check/", mode: 'copy', pattern: "*.{log,txt,kin0}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -523,7 +515,6 @@ process relatednessCheck {
 process targetPCA {
   publishDir "${params.outDir}/9_target_pca/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '16 GB'
@@ -560,7 +551,6 @@ process targetPCA {
 process shuffleSampleOrder {
   publishDir "${params.outDir}/10_shuffle_sample_order/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '1 GB'
@@ -596,7 +586,6 @@ process shuffleSampleOrder {
 process finalSNPandGenotypeQC {
   publishDir "${params.outDir}/11_final_snp_and_genotype_qc/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '8 GB'
@@ -635,7 +624,6 @@ process finalSNPandGenotypeQC {
 process finalPCA {
   publishDir "${params.outDir}/12_final_pca/", mode: 'copy', pattern: "*/*.{txt,pdf,png}"
   containerOptions "--bind ${params.bindFolder}"
-  containerOptions "--bind /home/umcg-jbakker"
 
   time '6h'
   memory '16 GB'
