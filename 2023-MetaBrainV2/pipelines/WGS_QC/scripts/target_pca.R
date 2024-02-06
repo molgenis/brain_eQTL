@@ -13,7 +13,9 @@ library(igraph)
 # Create command line argument list
 option_list <- list(
     make_option(c("--target_bed"), type = "character",
-    help = "Path to the target genotype file (bed/bim/fam format). Required file extension: .bed.")
+    help = "Path to the target genotype file (bed/bim/fam format). Required file extension: .bed."),
+    make_option(c("--outlier_threshold"), type = "double", default=0.4,
+    help = "Threshold for outlier filtering (default: 0.4)")
     )
 
 # Create arg parser and pars args

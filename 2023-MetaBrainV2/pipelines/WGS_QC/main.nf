@@ -534,7 +534,7 @@ process targetPCA {
   script:
   """
   # 1. Do PCA and find outliers
-  Rscript ${baseDir}/scripts/target_pca.R --target_bed ${bedFile}
+  Rscript ${baseDir}/scripts/target_pca.R --target_bed ${bedFile} --outlier_threshold ${params.populationOutlierThreshold}
 
   # 2. Remove outlier samples
   ~/plink2 --bed ${bedFile} \
