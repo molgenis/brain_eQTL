@@ -239,7 +239,7 @@ process indexGvcf {
 
 process indexJointGvcf {
   containerOptions '--bind /groups/'
-  publishDir "/groups/umcg-biogen/tmp01/umcg-ogkourlias/combined_vcf", mode: 'copy'
+  publishDir "/groups/umcg-biogen/tmp01/umcg-ogkourlias/combined_vcf", mode: 'move'
   errorStrategy 'retry'
   time '6h'
   memory '8 GB'
