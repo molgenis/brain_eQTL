@@ -41,10 +41,15 @@ RUN apt-get update -y \
         python-is-python3 \
         # Other compilers, builders & compressors.
         make=4.3-4.1build1 \
+        bzip2=1.0.8-5build1 \
         unzip \
         # Tools
         fastqc=0.11.9+dfsg-6 \
         # Other
+        liblzma-dev \
+        libbz2-dev \
+        libclang-dev \
+        libcurl4-gnutls-dev \
         ca-certificates=20230311ubuntu0.23.04.1 \
         zlib1g-dev=1:1.2.13.dfsg-1ubuntu4
 
@@ -52,28 +57,17 @@ RUN apt-get update -y \
 
 # VCFTools 0.1.13 Install
 RUN cd /tmp/init \
-    wget -O vcftools.tar.gz https://sourceforge.net/projects/vcftools/files/vcftools_0.1.13.tar.gz \
-    && tar -xzf /tmp/init/vcftools.tar.gz \
-    && cd vcftools_0.1.13/ \
-    && ls \
+    && wget -O bcftools.tar.bz2 https://github.com/samtools/bcftools/releases/download/1.19/bcftools-1.19.tar.bz2 \
+    && tar -xf bcftools.tar.bz2 \
+    && cd bcftools-1.19/ \
     && make \
     && make install \
-    && mv bin/* /usr/bin/ \
     && cd /tmp/init
 
 # Gatk4.4.0.0 install
 RUN wget -O gatk.zip https://github.com/broadinstitute/gatk/releases/download/4.4.0.0/gatk-4.4.0.0.zip \
     && unzip gatk.zip -d /usr/bin 
     ## Final path: /usr/bin/gatk-4.4.0.0/gatk
-
-# Beagle4 Install
-RUN wget -O /usr/bin/beagle.jar http://faculty.washington.edu/browning/beagle/beagle.22Jul22.46e.jar
-
-# Minimac4.1.4 Install
-RUN wget https://github.com/statgen/Minimac4/releases/download/v4.1.4/minimac4-4.1.4-Linux-x86_64.sh \
-        && chmod +x minimac4-4.1.4-Linux-x86_64.sh \
-        && yes | ./minimac4-4.1.4-Linux-x86_64.sh \
-        && mv minimac4-4.1.4-Linux-x86_64/bin/minimac4 /usr/bin/
 
 ################## CLEANUP ######################
 # Apt cleanup.

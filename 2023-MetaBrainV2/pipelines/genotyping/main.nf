@@ -331,11 +331,12 @@ process chrSplit {
   val i
   
   output:
-  path "${sample_gvcf.SimpleName}.gvcf.gz"
+  path "${gvcf_file.SimpleName}/chr${i}.vcf.gz"
   
   script:
   """
-  bcftools view ${gvcf_file} --regions ${i} -o chr${i}.vcf.gz -Oz
+  mkdir ${gvcf_file.SimpleName}
+  bcftools view ${gvcf_file} --regions ${i} -o ${gvcf_file.SimpleName}/chr${i}.vcf.gz -Oz
   """
 }
 
