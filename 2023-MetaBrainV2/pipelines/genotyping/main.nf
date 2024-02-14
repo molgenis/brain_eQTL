@@ -239,7 +239,6 @@ process indexGvcf {
 
 process indexJointGvcf {
   containerOptions '--bind /groups/'
-  publishDir "/groups/umcg-biogen/tmp01/umcg-ogkourlias/combined_vcf", mode: 'move'
   errorStrategy 'retry'
   time '6h'
   memory '8 GB'
@@ -250,14 +249,14 @@ process indexJointGvcf {
   path gvcf_file
   
   output:
-  path "${gvcf_file.SimpleName}.vcf.gz.tbi", emit: tbi_file
+  path "${gvcf_file.SimpleName}.gvcf.gz.tbi", emit: tbi_file
   path "${gvcf_file}", emit: gvcf_file
 
   script:
   """
   gatk --java-options "-Xmx6g" IndexFeatureFile \
   -I ${gvcf_file} \
-  -O ${gvcf_file.SimpleName}.vcf.gz.tbi
+  -O ${gvcf_file.SimpleName}.gvcf.gz.tbi
   """
 }
 
@@ -305,14 +304,14 @@ process jointGenotype {
   path gvcf_index
   
   output:
-  path "${sample_gvcf.SimpleName}.gvcf.gz"
+  path "${sample_gvcf.SimpleName}.vcf.gz"
   
   script:
   """
   gatk --java-options "-Xmx16g" GenotypeGVCFs \
   -R ${params.referenceGenome}\
   -V ${sample_gvcf} \
-  -O ${sample_gvcf.SimpleName}.gvcf.gz \
+  -O ${sample_gvcf.SimpleName}.vcf.gz \
   --read-index ${gvcf_index}
   """
 }
@@ -331,12 +330,11 @@ process chrSplit {
   val i
   
   output:
-  path "${gvcf_file.SimpleName}/chr${i}.vcf.gz"
+  path "chr${i}.gvcf.gz"
   
   script:
   """
-  mkdir ${gvcf_file.SimpleName}
-  bcftools view ${gvcf_file} --regions ${i} -o ${gvcf_file.SimpleName}/chr${i}.vcf.gz -Oz
+  bcftools view ${gvcf_file} --regions chr${i} -o chr${i}.gvcf.gz -Oz
   """
 }
 
