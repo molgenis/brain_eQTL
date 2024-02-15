@@ -225,7 +225,8 @@ process indexGvcf {
   path gvcf_file
   
   output:
-  path "index/${gvcf_file.SimpleName}.gvcf.gz.tbi"
+  path "index/${gvcf_file.SimpleName}.gvcf.gz.tbi", emit: tbi_file
+  path "${gvcf_file}", emit: gvcf_file
 
   script:
   """
@@ -377,10 +378,13 @@ workflow {
     AddOrReplaceReadGroups(splitNCigarReads.output.bam_file, splitNCigarReads.output.index_file)
     baseRecalibrator(AddOrReplaceReadGroups.output.bam_file, AddOrReplaceReadGroups.output.index_file, params.knownSitesIndex)
     applyBQSR(AddOrReplaceReadGroups.output.bam_file, AddOrReplaceReadGroups.output.index_file, baseRecalibrator.output.table_file)
-    gvcf_files = haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file).collect()
-    gvcf_indexes = indexGvcf(haplotypeCaller.output).collect()
-    chrs = Channel.from( 1..22 )
-    chrSplit(gvcf_files, gvcf_indexes, chrs)
-    indexJointGvcf(chrSplit.output)
-    jointGenotype(indexJointGvcf.output.gvcf_file, indexJointGvcf.output.tbi_file)
+    // gvcf_files = haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file).collect()
+    // gvcf_indexes = indexGvcf(haplotypeCaller.output).collect()
+    // chrs = Channel.from( 1..22 )
+    // chrSplit(gvcf_files, gvcf_indexes, chrs)
+    // indexJointGvcf(chrSplit.output)
+    // jointGenotype(indexJointGvcf.output.gvcf_file, indexJointGvcf.output.tbi_file)
+    haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file)
+    indexGvcf(haplotypeCaller.output)
+    jointGenotype(indexGvcf.output.gvcf_file, indexGvcf.output.tbi_file)
 }
