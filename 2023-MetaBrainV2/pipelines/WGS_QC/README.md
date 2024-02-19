@@ -51,7 +51,7 @@ The following parameters are required:
 
 `--bindFolder` Folder that the singularity container should bind to.
 
-`--sampleFile` Text file containing a list of input VCF samples
+`--sampleFile` Text file containing a list of input VCF samples. This file can be created with the instructions in the Usage section of this README.
 
 `--outDir` Path to the desired output directory
 
@@ -80,7 +80,17 @@ The following are optional:
 
 `--populationOutlierThreshold` Threshold for filtering population outliers (default: 0.4)
 
-## Run the pipeline
+## Usage
+### 1. Create sample file
+To create an input sample file, you can use the `index_dir.py` script. This script expects the following parameters:
+
+`--input_dir` The directory in which the sample files are stored (REQUIRED)
+
+`--out` Desired prefix of the output file (REQUIRED)
+
+`--file_substring` Only files containing this substring are indexed (OPTIONAL)
+
+### 2. Run the pipeline
 After the installation and configuration as described in the previous parts of this README, you can simply run the pipeline with the following command:
 
 ```
