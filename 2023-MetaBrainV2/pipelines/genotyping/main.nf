@@ -192,7 +192,7 @@ process haplotypeCaller {
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
-  memory '16 GB'
+  memory '12 GB'
   cpus 4
 
   input:
@@ -205,7 +205,7 @@ process haplotypeCaller {
   script:
   """
   mkdir gvcf
-  gatk --java-options "-Xmx12g" HaplotypeCaller \
+  gatk --java-options "-Xmx10g" HaplotypeCaller \
   -R ${params.referenceGenome}\
   -I ${sample_bam} \
   -O gvcf/${sample_bam.SimpleName}.gvcf.gz \
@@ -225,15 +225,13 @@ process indexGvcf {
   path gvcf_file
   
   output:
-  path "index/${gvcf_file.SimpleName}.gvcf.gz.tbi", emit: tbi_file
-  path "${gvcf_file}", emit: gvcf_file
-
+  path "${gvcf_file.SimpleName}.gvcf.gz.tbi"
+  
   script:
   """
-  mkdir index
   gatk --java-options "-Xmx6g" IndexFeatureFile \
   -I ${gvcf_file} \
-  -O index/${gvcf_file.SimpleName}.gvcf.gz.tbi
+  -O ${gvcf_file.SimpleName}.gvcf.gz.tbi
   """
 }
 
@@ -264,56 +262,56 @@ process indexJointGvcf {
 process combineGvcf {
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '72h'
+  time '12h'
   memory '12 GB'
   cpus 1
   maxRetries 12
 
   input:
-  path gvcf_files
-  path gvcf_indexes
+  path gvcfs
+  path gvcf_idx
+  val i
   
   output:
-  path "combined/combined.gvcf.gz"
+  path "chr${i}.gvcf.gz"
+  path "chr${i}.gvcf.gz.tbi"
   
   script:
   """
-  mkdir combined
-  for GVCF in ${gvcf_files}
+  for GVCF in ${gvcfs}
   do
-    echo \$GVCF >> gvcf.list
+    bcftools view \$GVCF --regions chr${i} -o \$GVCF.chr${i}.gvcf.gz -Oz
+    tabix \$GVCF.chr${i}.gvcf.gz
+    echo \$GVCF.chr${i}.gvcf.gz >> gvcf.list
   done
   gatk --java-options "-Xmx10g" CombineGVCFs \
   -R ${params.referenceGenome} \
   -V gvcf.list \
-  -O combined/combined.gvcf.gz \
-  --call-genotypes true
+  -O chr${i}.gvcf.gz
   """
 }
 
 process jointGenotype {
-  publishDir "${params.outDir}", mode: 'copy'
+  publishDir "${params.outDir}", mode: 'move'
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
-  memory '18 GB'
+  memory '12 GB'
   cpus 1
   maxRetries 18
 
   input:
-  path sample_gvcf
-  path gvcf_index
+  path gvcf
   
   output:
-  path "${sample_gvcf.SimpleName}.vcf.gz"
+  path "${gvcf.SimpleName}.vcf.gz"
   
   script:
   """
   gatk --java-options "-Xmx16g" GenotypeGVCFs \
   -R ${params.referenceGenome}\
-  -V ${sample_gvcf} \
-  -O ${sample_gvcf.SimpleName}.vcf.gz \
-  --read-index ${gvcf_index}
+  -V gendb://${gvcf} \
+  -O ${gvcf.SimpleName}.vcf.gz
   """
 }
 
@@ -326,8 +324,7 @@ process chrSplit {
   maxRetries 18
 
   input:
-  path gvcf_file
-  path gvcf_index
+  path gvcf_dir
   val i
   
   output:
@@ -368,6 +365,38 @@ process combineChrGvcf {
   """
 }
 
+process genomicsDBImport {
+  containerOptions '--bind /groups/'
+  errorStrategy 'retry'
+  time '6h'
+  memory '12 GB'
+  cpus 4
+  maxRetries 1
+
+  input:
+  path gvcfs
+  val i
+
+  output:
+  path "chr${i}.gdb"
+  
+  script:
+  """
+  for GVCF in ${gvcfs}
+  do
+    tabix \$GVCF
+    bcftools view \$GVCF --regions chr${i} -o \$GVCF.chr${i}.gvcf.gz -Oz
+    echo "\${GVCF%%.*}_chr${i}\t\$GVCF" >> cohort.sample_map
+  done
+  gatk --java-options "-Xmx10g" GenomicsDBImport \
+  --genomicsdb-workspace-path chr${i}.gdb \
+  --batch-size 200 \
+  --sample-name-map cohort.sample_map \
+  -L chr${i} \
+  --reader-threads 4
+  """
+}
+
 
 workflow {
     cram_files = Channel.fromPath("${params.cram_dir}/*/*.cram")
@@ -378,13 +407,15 @@ workflow {
     AddOrReplaceReadGroups(splitNCigarReads.output.bam_file, splitNCigarReads.output.index_file)
     baseRecalibrator(AddOrReplaceReadGroups.output.bam_file, AddOrReplaceReadGroups.output.index_file, params.knownSitesIndex)
     applyBQSR(AddOrReplaceReadGroups.output.bam_file, AddOrReplaceReadGroups.output.index_file, baseRecalibrator.output.table_file)
-    // gvcf_files = haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file).collect()
-    // gvcf_indexes = indexGvcf(haplotypeCaller.output).collect()
-    // chrs = Channel.from( 1..22 )
-    // chrSplit(gvcf_files, gvcf_indexes, chrs)
+    haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file)
+    gvcfs = haplotypeCaller.output.collect()
+    chrs = Channel.from( 1..22 )
+    genomicsDBImport(gvcfs, chrs)
+    jointGenotype(genomicsDBImport.output)
+
     // indexJointGvcf(chrSplit.output)
     // jointGenotype(indexJointGvcf.output.gvcf_file, indexJointGvcf.output.tbi_file)
-    haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file)
-    indexGvcf(haplotypeCaller.output)
-    jointGenotype(indexGvcf.output.gvcf_file, indexGvcf.output.tbi_file)
+    // haplotypeCaller(applyBQSR.output.bam_file, applyBQSR.output.index_file)
+    // indexGvcf(haplotypeCaller.output)
+    // jointGenotype(indexGvcf.output.gvcf_file, indexGvcf.output.tbi_file)
 }
