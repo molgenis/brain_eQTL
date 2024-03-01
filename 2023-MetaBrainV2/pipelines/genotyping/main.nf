@@ -1,6 +1,7 @@
 nextflow.enable.dsl=2
 
 process cramToBam {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -21,6 +22,7 @@ process cramToBam {
 }
 
 process indexBam {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -44,6 +46,7 @@ process indexBam {
 }
 
 process encodeConvert {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -77,6 +80,7 @@ process encodeConvert {
 }
 
 process splitNCigarReads {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -103,6 +107,7 @@ process splitNCigarReads {
 }
 
 process AddOrReplaceReadGroups {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -134,6 +139,7 @@ process AddOrReplaceReadGroups {
 
 
 process baseRecalibrator {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -162,6 +168,7 @@ process baseRecalibrator {
 }
 
 process applyBQSR {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -189,6 +196,7 @@ process applyBQSR {
 }
 
 process haplotypeCaller {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -214,6 +222,7 @@ process haplotypeCaller {
 }
 
 process indexGvcf {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -237,6 +246,7 @@ process indexGvcf {
 
 
 process indexJointGvcf {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -260,6 +270,7 @@ process indexJointGvcf {
 }
 
 process combineGvcf {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '12h'
@@ -292,6 +303,7 @@ process combineGvcf {
 }
 
 process jointGenotype {
+  scratch true
   publishDir "${params.outDir}", mode: 'move'
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
@@ -311,11 +323,13 @@ process jointGenotype {
   gatk --java-options "-Xmx16g" GenotypeGVCFs \
   -R ${params.referenceGenome}\
   -V gendb://${gvcf} \
-  -O ${gvcf.SimpleName}.vcf.gz
+  -O ${gvcf.SimpleName}.vcf.gz \
+  --include-non-variant-sites
   """
 }
 
 process chrSplit {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -337,9 +351,10 @@ process chrSplit {
 }
 
 process combineChrGvcf {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  publishDir "${chr_dir}", mode: 'copy'
+  publishDir "${chr_dir}", mode: 'move'
   time '6h'
   memory '12 GB'
   cpus 1
@@ -366,6 +381,7 @@ process combineChrGvcf {
 }
 
 process genomicsDBImport {
+  scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
