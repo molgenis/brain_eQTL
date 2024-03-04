@@ -4,6 +4,7 @@ process convertBAMToFASTQ {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
   maxRetries 999
+  maxForks 10
 
   time '6h'
   memory '8 GB'
@@ -70,10 +71,13 @@ process convertBAMToFASTQ {
     # 1. Make output directory
     mkdir fastq_output
 
-    # 2. Copy the fastq file(s) to the output directory
+    # 2. Create symlink from the fastq file(s) to the output directory
     for path in "${sampleFiles[@]}"; do
       strippedPath=$(echo "$path" | tr -d '\\r')
-      cp $strippedPath fastq_output
+      IFS='/' read -r -a directories <<< "${path}"
+      fileName="${directories[-1]}"
+      finalOut=fastq_output/"$fileName"
+      ln -s $strippedPath $finalOut
     done
   fi
   '''
