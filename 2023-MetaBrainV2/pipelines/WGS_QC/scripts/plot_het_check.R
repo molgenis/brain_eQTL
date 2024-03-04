@@ -1,3 +1,6 @@
+# Author: Urmo Võsa
+# Edited by Joost Bakker
+
 library(bigreadr)
 library(ggplot2)
 library(data.table)

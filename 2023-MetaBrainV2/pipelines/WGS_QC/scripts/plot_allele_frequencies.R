@@ -1,3 +1,6 @@
+# Author: Urmo Võsa
+# Edited by Joost Bakker
+
 library(ggplot2)
 library(data.table)
 library(optparse)
@@ -13,7 +16,7 @@ option_list <- list(
 parser <- OptionParser(usage = "%prog [options] file", option_list = option_list)
 args <- parse_args(parser)
 
-# Replace reference_data_freq and target_data_freq with actual file prefixes
+# Read in frequency files
 reference_freq <- fread(args$ref_afs, header = TRUE)
 target_freq <- fread(args$target_afs, header = TRUE)
 

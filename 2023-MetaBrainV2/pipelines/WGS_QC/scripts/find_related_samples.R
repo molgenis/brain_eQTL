@@ -1,3 +1,6 @@
+# Author: Urmo Võsa
+# Edited by Joost Bakker
+
 library(bigreadr)
 library(bigsnpr)
 library(dplyr)
@@ -25,17 +28,18 @@ args <- parse_args(parser)
 # Load target bed file
 target_bed <- bed(args$target_bed)
 
-# fwrite(related, "related.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+# Read kin file
 related <- read.delim(args$kin_file)
 
 # Remove samples that are related to each other
 related$IID1 <- as.character(related$IID1)
 related$IID2 <- as.character(related$IID2)
-# First, get the total list of all samples with some relatedness above a predefined threshold (see above in plink call)
+
+# Get list of related samples
 related_individuals <- unique(c(related$IID1, related$IID2))
 
 
-# First make an empty vector with samples to remove.
+# Create an empty vector with samples to remove
 samples_to_remove_due_to_relatedness <- c()
 
 # If there are related individuals, remove these in the following step.
@@ -74,7 +78,7 @@ if (length(related_individuals) > 0) {
     relatedness_graph <- delete_vertices(relatedness_graph, c(curr_vertex, related_vertices))
   }
 
-  # Remove these indices from the indices that remained after the previous check.
+  # Remove these indices from the indices that remained after the previous check
   passed_samples <- target_bed$fam$`sample.ID`[
     (!target_bed$fam$`sample.ID` %in% samples_to_remove_due_to_relatedness)]
 

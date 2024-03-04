@@ -1,3 +1,6 @@
+# Author: Urmo Võsa
+# Edited by Joost Bakker
+
 library(bigreadr)
 library(bigsnpr)
 library(dplyr)
@@ -44,27 +47,27 @@ proj_PCA <- bed_projectPCA(
   )
 
 # Create plots for first 10 PCs
-abi <- as.data.frame(proj_PCA$OADP_proj)
-colnames(abi) <- paste0("PC", 1:10)
+target_samples <- as.data.frame(proj_PCA$OADP_proj)
+colnames(target_samples) <- paste0("PC", 1:10)
 
 PCs_ref <- predict(proj_PCA$obj.svd.ref)
-abi2 <- as.data.frame(PCs_ref)
-colnames(abi2) <- paste0("PC", 1:10)
+ref_samples <- as.data.frame(PCs_ref)
+colnames(ref_samples) <- paste0("PC", 1:10)
 
-abi2$sample <- ref_bed$fam$`sample.ID`
-abi2 <- abi2[, c(11, 1:10)]
+ref_samples$sample <- ref_bed$fam$`sample.ID`
+ref_samples <- ref_samples[, c(11, 1:10)]
 
 pops <- fread(args$ref_pops, keepLeadingZeros = TRUE, colClasses = list(character = c(2, 6, 7)))
-abi2 <- merge(abi2, pops, by.x = "sample", by.y = "SampleID")
-abi2 <- abi2[, c(1, 12, 13, 2:11)]
+ref_samples <- merge(ref_samples, pops, by.x = "sample", by.y = "SampleID")
+ref_samples <- ref_samples[, c(1, 12, 13, 2:11)]
 
-abi <- data.frame(sample = target_bed$fam$`sample.ID`,
-                  Population = "Target", Superpopulation = "Target", abi)
+target_samples <- data.frame(sample = target_bed$fam$`sample.ID`,
+                  Population = "Target", Superpopulation = "Target", target_samples)
 
-abi$type <- "Target"
-abi2$type <- "1000G"
+target_samples$type <- "Target"
+ref_samples$type <- "1000G"
 
-combined <- rbind(abi, abi2)
+combined <- rbind(target_samples, ref_samples)
 
 combined$Superpopulation <- factor(combined$Superpopulation, levels = c("Target", "EUR", "EAS", "AMR", "SAS", "AFR"))
 
@@ -117,50 +120,42 @@ p <- p00 + p0 + p1 + p2 + p3 + p4 + p5 + plot_layout(nrow = 4)
 # Save plots as png and pdf
 ggsave("SamplesPCsProjectedTo1000G.png", type = "cairo", height = 20, width = 9.5 * 1.6, units = "in", dpi = 300)
 ggsave("SamplesPCsProjectedTo1000G.pdf", height = 20, width = 9.5 * 1.6, units = "in", dpi = 300)
-fwrite(abi[, -c(2, 3, ncol(abi))], "1000G_PC_projections.txt", sep = "\t", quote = FALSE )
+fwrite(target_samples[, -c(2, 3, ncol(target_samples))], "1000G_PC_projections.txt", sep = "\t", quote = FALSE )
 
-## Assign each sample to the superpopulation
-message("Assign each sample to 1000G superpopulation.")
-### Calculate distance of each sample to all samples per each population
-target_samples <- abi[, -c(2, 3, ncol(abi))]
-
-#### Use 3 PCs
+# Use the first 3 PCs
+target_samples <- target_samples[, -c(2, 3, ncol(target_samples))]
 target_samples <- target_samples[, c(1:4)]
 rownames(target_samples) <- target_samples$sample
 target_samples <- target_samples[, -1]
 
-population_assign_res <- data.frame(sample = rownames(target_samples), abi = rownames(target_samples))
+population_assign_res <- data.frame(sample = rownames(target_samples), target_samples = rownames(target_samples))
 
-#### EUR
-    for(population in c("EUR", "EAS", "AMR", "SAS", "AFR")){
-    abi_e <- abi2[abi2$Superpopulation == population, ]
-    head(abi_e)
+# Assign each sample to a super population
+for(population in c("EUR", "EAS", "AMR", "SAS", "AFR")){
 
-    sup_pop_samples <- abi_e[, -c(2, 3, ncol(abi_e))]
-
+    # Combine reference and target samples
+    target_samples_e <- ref_samples[ref_samples$Superpopulation == population, ]
+    sup_pop_samples <- target_samples_e[, -c(2, 3, ncol(target_samples_e))]
     sup_pop_samples <- sup_pop_samples[, c(1:4)]
     rownames(sup_pop_samples) <- sup_pop_samples$sample
     sup_pop_samples <- sup_pop_samples[, -1]
-
-    head(sup_pop_samples)
-
     comb <- rbind(target_samples, sup_pop_samples)
-    head(comb)
+
+    # Create distance matrix 
     distance <- as.matrix(dist(comb, method = "euclidean"))
-    head(distance)
+
+    # Filter only cells that have target samples on the rows, and reference samples on the columns
     distance <- distance[c(1:nrow(target_samples)), -c(1:nrow(target_samples))]
-    head(distance)
 
-    head(rowMeans(distance))
-
+    # For every target sample, calculate average distance to every super population
     distance <- data.frame(sample = rownames(target_samples), MeanDistance = rowMeans(distance))
+    
+    # Assign super population with lowest average distance to target sample
     colnames(distance)[2] <- population
-
     population_assign_res <- cbind(population_assign_res, distance[, -1])
-
-
 }
 
+# Write super population assignments to out file
 colnames(population_assign_res)[3:ncol(population_assign_res)] <- c("EUR", "EAS", "AMR", "SAS", "AFR")
 fwrite(population_assign_res[, -1], "PopAssignResults.txt", sep = "\t", quote = FALSE )
 

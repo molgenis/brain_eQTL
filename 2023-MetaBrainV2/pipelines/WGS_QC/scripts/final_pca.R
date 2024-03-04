@@ -1,3 +1,6 @@
+# Author: Urmo Võsa
+# Edited by Joost Bakker
+
 library(bigreadr)
 library(bigsnpr)
 library(dplyr)
