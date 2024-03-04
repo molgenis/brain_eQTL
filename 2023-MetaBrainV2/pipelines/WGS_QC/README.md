@@ -5,6 +5,7 @@ This pipeline is developed for automated quality control of WGS data. The follow
 - Sample filtering based on a sex check
 - Sample filtering based on a heterozygosity check
 - Sample filtering based on a relatedness check
+- Sample filtering based on z-score outliers
 - Population based filtering of outliers
 
 ## System requiremets
@@ -104,6 +105,9 @@ nextflow run main.nf -resume
 ```
 
 ## Acknowledgements
+The code for this pipeline is built upon the work of Urmo Võsa, Robert Warmerdam, Harm-Jan Westra, and Martijn Vochteloo, to whom we want to express our sincere gratitude.
+
+### Citations
 [P. DI Tommaso, M. Chatzou, E. W. Floden, P. P. Barja, E. Palumbo, and C. Notredame, “Nextflow enables reproducible computational workflows,” Nature Biotechnology 2017 35:4, vol. 35, no. 4, pp. 316–319, Apr. 2017, doi: 10.1038/nbt.3820.](https://www.nature.com/articles/nbt.3820)
 
 [P. Danecek et al., “Twelve years of SAMtools and BCFtools,” Gigascience, vol. 10, no. 2, pp. 1–4, Jan. 2021, doi: 10.1093/GIGASCIENCE/GIAB008.](https://pubmed.ncbi.nlm.nih.gov/33590861/)
@@ -113,3 +117,6 @@ nextflow run main.nf -resume
 [F. Prive, H. Aschard, A. Ziyatdinov, and M. G. B. Blum, “Efficient analysis of large-scale genome-wide data with two R packages: bigstatsr and bigsnpr,” Bioinformatics, vol. 34, no. 16, pp. 2781–2787, Aug. 2018, doi: 10.1093/BIOINFORMATICS/BTY185.](https://pubmed.ncbi.nlm.nih.gov/29617937/)
 
 [A. Auton et al., “A global reference for human genetic variation,” Nature 2015 526:7571, vol. 526, no. 7571, pp. 68–74, Sep. 2015, doi: 10.1038/nature15393.](https://www.nature.com/articles/nature15393)
+
+## Contact
+For any questions or comments about this pipeline, contact: j.m.bakker@umcg.nl
