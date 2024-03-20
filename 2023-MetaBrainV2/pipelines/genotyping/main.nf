@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
 process cramToBam {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -22,7 +22,7 @@ process cramToBam {
 }
 
 process indexBam {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -46,7 +46,7 @@ process indexBam {
 }
 
 process encodeConvert {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -80,11 +80,11 @@ process encodeConvert {
 }
 
 process splitNCigarReads {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '6h'
-  memory '8 GB'
+  time '16h'
+  memory '10 GB'
   cpus 1
   maxRetries 16
 
@@ -107,7 +107,7 @@ process splitNCigarReads {
 }
 
 process AddOrReplaceReadGroups {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -139,7 +139,7 @@ process AddOrReplaceReadGroups {
 
 
 process baseRecalibrator {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -168,7 +168,7 @@ process baseRecalibrator {
 }
 
 process applyBQSR {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -196,10 +196,11 @@ process applyBQSR {
 }
 
 process haplotypeCaller {
-  scratch true
+//   scratch true
+  publishDir "${params.outDir}", mode: 'copy'
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '6h'
+  time '16h'
   memory '12 GB'
   cpus 4
 
@@ -222,7 +223,7 @@ process haplotypeCaller {
 }
 
 process indexGvcf {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -246,7 +247,7 @@ process indexGvcf {
 
 
 process indexJointGvcf {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -270,10 +271,10 @@ process indexJointGvcf {
 }
 
 process combineGvcf {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '12h'
+  time '16h'
   memory '12 GB'
   cpus 1
   maxRetries 12
@@ -303,12 +304,12 @@ process combineGvcf {
 }
 
 process jointGenotype {
-  scratch true
+//   scratch true
   publishDir "${params.outDir}", mode: 'move'
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '6h'
-  memory '12 GB'
+  time '24h'
+  memory '24 GB'
   cpus 1
   maxRetries 18
 
@@ -320,16 +321,15 @@ process jointGenotype {
   
   script:
   """
-  gatk --java-options "-Xmx16g" GenotypeGVCFs \
+  gatk --java-options "-Xmx20g" GenotypeGVCFs \
   -R ${params.referenceGenome}\
   -V gendb://${gvcf} \
-  -O ${gvcf.SimpleName}.vcf.gz \
-  --include-non-variant-sites
+  -O ${gvcf.SimpleName}.vcf.gz
   """
 }
 
 process chrSplit {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   time '6h'
@@ -351,11 +351,11 @@ process chrSplit {
 }
 
 process combineChrGvcf {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
   publishDir "${chr_dir}", mode: 'move'
-  time '6h'
+  time '16h'
   memory '12 GB'
   cpus 1
   maxRetries 16
@@ -381,11 +381,11 @@ process combineChrGvcf {
 }
 
 process genomicsDBImport {
-  scratch true
+//   scratch true
   containerOptions '--bind /groups/'
   errorStrategy 'retry'
-  time '6h'
-  memory '12 GB'
+  time '24h'
+  memory '24 GB'
   cpus 4
   maxRetries 1
 
@@ -402,9 +402,9 @@ process genomicsDBImport {
   do
     tabix \$GVCF
     bcftools view \$GVCF --regions chr${i} -o \$GVCF.chr${i}.gvcf.gz -Oz
-    echo "\${GVCF%%.*}_chr${i}\t\$GVCF" >> cohort.sample_map
+    echo "\${GVCF%%.*}\t\$GVCF" >> cohort.sample_map
   done
-  gatk --java-options "-Xmx10g" GenomicsDBImport \
+  gatk --java-options "-Xmx20g" GenomicsDBImport \
   --genomicsdb-workspace-path chr${i}.gdb \
   --batch-size 200 \
   --sample-name-map cohort.sample_map \
