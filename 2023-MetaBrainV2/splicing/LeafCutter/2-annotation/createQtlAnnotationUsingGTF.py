@@ -5,14 +5,14 @@ import gzip
 # sys.path.append("../../../library/")
 from pathlib import Path
 
-
-path = str(Path(__file__).parent.parent.parent.parent.absolute().__str__()+"/library/")
-print("library path: "+path)
-sys.path.insert(0,path)
-
+path = str(Path(__file__).parent.parent.parent.parent.absolute().__str__() + "/library/")
+print("library path: " + path)
+sys.path.insert(0, path)
 
 from parsers.GTFAnnotation import GTFAnnotation
-from features.splicefeature import SpliceFeature
+from features.splicefeature2 import SpliceFeature
+
+maxdist = 10000
 
 
 class bcolors:
@@ -25,7 +25,6 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
 
 
 if len(sys.argv) < 4:
@@ -42,20 +41,21 @@ outfile = sys.argv[3]
 
 def getfh(file):
     if file.endswith(".gz"):
-        return gzip.open(file,'rt')
+        return gzip.open(file, 'rt')
     return open(file)
+
 
 # load junctions and clusters
 junctions = []
 clusters = {}
-print("Loading splice junctions from: "+splicefile )
+print("Loading splice junctions from: " + splicefile)
 fh = getfh(splicefile)
 fh.readline()
 lctr = 0
 for line in fh:
-    elems = line.strip().split("\t",2)
+    elems = line.strip().split("\t", 2)
     if len(elems) == 1:
-        elems = line.strip().split(" ",2)
+        elems = line.strip().split(" ", 2)
     id = elems[0]
     # print(id)
     junction = SpliceFeature.parseLeafCutter(id)
@@ -69,21 +69,22 @@ for line in fh:
         clusters[clusterid] = junctionsInCluster
     lctr += 1
     if lctr % 50000 == 0:
-        print("{} lines parsed, {} loaded, {} clusters".format(lctr,len(junctions),len(clusters)),end='\r')
+        print("{} lines parsed, {} loaded, {} clusters".format(lctr, len(junctions), len(clusters)), end='\r')
         # break
-print("{} lines parsed, {} loaded, {} clusters".format(lctr,len(junctions),len(clusters)),end='\n')
+print("{} lines parsed, {} loaded, {} clusters".format(lctr, len(junctions), len(clusters)), end='\n')
 fh.close()
-
 
 annotation = GTFAnnotation(gtffile)
 genesByChr = annotation.getGenesByChromosome()
 
 # annotate genes within each cluster
-fho = gzip.open(outfile+"-nearestgene-annotation.txt.gz",'wt')
-fho2 = gzip.open(outfile+"-nearestgene-clusters.txt.gz",'wt')
-fho3 = gzip.open(outfile+"-nearestgene-junctions.txt.gz",'wt')
-fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\tTypeOfGene\n")
+fho = gzip.open(outfile + "-nearestgene-annotation.txt.gz", 'wt')
+fho4 = gzip.open(outfile + "-nearestgene-annotationAndOverlappingGenes.txt.gz", 'wt')
+fho2 = gzip.open(outfile + "-nearestgene-clusters.txt.gz", 'wt')
+fho3 = gzip.open(outfile + "-nearestgene-junctions.txt.gz", 'wt')
+fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\tTypeOfGene\tDistance\tOverlapsGene\n")
 jctr = 0
+
 for junction in junctions:
     genes = genesByChr.get(junction.chr)
     nearestGene = None
@@ -101,17 +102,22 @@ for junction in junctions:
                     nearestGene = gene
                     # print("new nearest gene: {}\t{}\t{}".format(junction.name,gene.name,dist))
         gene = nearestGene
-    if nearestGene is not None:            
-        fho.write("leafcutter\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(junction.name, gene.symbol, junction.chr.getNumber(), junction.start, junction.stop, gene.strand.toStr(), gene.name, gene.type))
-        fho2.write(junction.name+"\t"+junction.clusterId+"\n")
-        fho3.write(junction.name+"\n")
+    if nearestGene is not None:
+        fho.write(
+            f"leafcutter\t{junction.name}\t{gene.symbol}\t{junction.chr.getNumber()}\t{junction.start}\t{junction.stop}\t{gene.strand.toStr()}\t{gene.name}\t{gene.type}\t{nearestGeneDist}\t{gene.overlaps(junction)}\n")
+        fho2.write(junction.name + "\t" + junction.clusterId + "\n")
+        fho3.write(junction.name + "\n")
     else:
-        print(bcolors.FAIL+"No gene for "+junction.name+" - "+str(junction.chr.getNumber())+bcolors.ENDC)
+        print(bcolors.FAIL + "No gene for " + junction.name + " - " + str(junction.chr.getNumber()) + bcolors.ENDC)
+        # fho.write(
+        #     f"leafcutter\t{junction.name}\t{gene.symbol}\t{junction.chr.getNumber()}\t{junction.start}\t{junction.stop}\tNA\t-\t-\tNA\tNA\n")
+        # fho2.write(junction.name + "\t" + junction.clusterId + "\n")
+        # fho3.write(junction.name + "\n")
     jctr += 1
     if jctr % 1000 == 0:
-        print("{} junctions written".format(jctr),end='\r')
+        print("{} junctions written".format(jctr), end='\r')
         # break
-print("{} junctions written".format(jctr),end='\n')
+print("{} junctions written".format(jctr), end='\n')
 fho3.close()
 fho2.close()
 fho.close()
@@ -145,7 +151,8 @@ for cluster in clusters.keys():
 
     if len(overlappingGenes) > 1:
         # do some magic to assign the most probable one
-        print(bcolors.FAIL+"cluster {} overlaps {} genes and has {} members".format(cluster, len(overlappingGenes), len(junctions)))
+        print(bcolors.FAIL + "cluster {} overlaps {} genes and has {} members".format(cluster, len(overlappingGenes),
+                                                                                      len(junctions)))
         for junction in junctions:
             genesForJunction = genesPerJunction.get(junction)
             genestr = "\tNA"
@@ -158,17 +165,18 @@ for cluster in clusters.keys():
                     overlappingExons = False
                     bpoverlap = gene.bpOverlap(junction)
 
-
                     for transcript in gene.transcripts:
                         for exon in transcript.exons:
                             if exon.overlaps(junction):
                                 genesWithOverlappingExons.add(gene)
-                                overlappingExons=True
-                                
+                                overlappingExons = True
+
                     if overlappingExons:
-                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap) + "-"+bcolors.OKCYAN+"TRUE"+bcolors.ENDC
+                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop, gene.strand,
+                                                                     bpoverlap) + "-" + bcolors.OKCYAN + "TRUE" + bcolors.ENDC
                     else:
-                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop,gene.strand,bpoverlap)+ "-"+bcolors.FAIL+"FALSE"+bcolors.ENDC
+                        genestr += "\t{}({}-{}); {} - ov: {}".format(gene.symbol, gene.start, gene.stop, gene.strand,
+                                                                     bpoverlap) + "-" + bcolors.FAIL + "FALSE" + bcolors.ENDC
                     if nearestGene is None:
                         nearestGene = gene
                         nearestGeneDist = gene.absoluteMinimalDistance(junction)
@@ -179,16 +187,18 @@ for cluster in clusters.keys():
                             nearestGeneDist = mindist
                             nearestGene = gene
 
-                        
-            print(bcolors.OKBLUE+junction.name+ bcolors.ENDC+genestr+"\tNearest:"+bcolors.OKGREEN+nearestGene.symbol+bcolors.ENDC)
+            print(
+                bcolors.OKBLUE + junction.name + bcolors.ENDC + genestr + "\tNearest:" + bcolors.OKGREEN + nearestGene.symbol + bcolors.ENDC)
         print()
         cctr += 1
         if cctr % 100 == 0:
             sys.exit()
         pass
     elif len(overlappingGenes) == 1:
-        print(bcolors.OKGREEN+"cluster {} overlaps 1 gene and has {} members".format(cluster, len(junctions))+ bcolors.ENDC) 
+        print(bcolors.OKGREEN + "cluster {} overlaps 1 gene and has {} members".format(cluster,
+                                                                                       len(junctions)) + bcolors.ENDC)
         fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\n")
     else:
-        print(bcolors.OKGREEN+"cluster {} overlaps no genes and has {} members".format(cluster, len(junctions))+ bcolors.ENDC)
+        print(bcolors.OKGREEN + "cluster {} overlaps no genes and has {} members".format(cluster,
+                                                                                         len(junctions)) + bcolors.ENDC)
         fho.write("Platform\tEnsembl\tSymbol\tChr\tChrStart\tChrEnd\tProbe\tStrand\n")
