@@ -21,7 +21,7 @@ from pprint import pprint
 parser = argparse.ArgumentParser()
 parser.add_argument("-c","--counts", help="Leafcutter cluster count file", required=True)
 parser.add_argument("-s","--samplerename", help="Replace e.g. BAM ids to something more friendly")
-parser.add_argument("-d","--datasetfile", help="Sample to dataset definition file", required=True)
+parser.add_argument("-d","--datasetfile", help="Sample to dataset definition file", required=False)
 parser.add_argument("-i","--sampleinclude", help="Sample include list (after --samplerename, when applied)")
 parser.add_argument("-o","--out", help="Output prefix",required=True)
 parser.add_argument("--minNrDatasets", help="Minimal number of datasets per junction",default=2)
@@ -208,26 +208,24 @@ for col in header:
 
 			# some dataset bookkeeping			
 			# ds = samplesPerDataset.get(sample)
-			ds = None
+			ds = "None"
 			if sampleToDataset is not None:
 				ds = sampleToDataset.get(sample)
 				if ds is None:
-			#	print("Sample "+sample+" has no dataset annotation")
-					ds = "None"
-			#	ok = False
-				sampleSet = includedSamplesPerDataset.get(ds)
-				if sampleSet is None:
-					sampleSet = set()
-				sampleSet.add(sample)
-				includedSamplesPerDataset[ds] = sampleSet
+					print("Warning: sample "+sample+" has no dataset annotation")
+			sampleSet = includedSamplesPerDataset.get(ds)
+			if sampleSet is None:
+				sampleSet = set()
+			sampleSet.add(sample)
+			includedSamplesPerDataset[ds] = sampleSet
 
-				relativeColIds = relativeColIdsForDataset.get(ds)
-				if relativeColIds is None:
-					relativeColIds = []
-				relativeColIds.append(relativeColCtr)
-				relativeColIdsForDataset[ds] = relativeColIds
-				matchingsamples.add(sample)
-				relativeColCtr += 1
+			relativeColIds = relativeColIdsForDataset.get(ds)
+			if relativeColIds is None:
+				relativeColIds = []
+			relativeColIds.append(relativeColCtr)
+			relativeColIdsForDataset[ds] = relativeColIds
+			matchingsamples.add(sample)
+			relativeColCtr += 1
 	colCtr+=1
 
 print()
@@ -263,31 +261,39 @@ includedDatasetsArr.sort()
 includedDatasets = includedDatasetsArr
 
 # write header
+writeExtraFiles = False
+
 fhoPsiFiltered = gzip.open(outprefix+"-PSI-filtered.txt.gz",'wt')
-fhoPsiUnfiltered = gzip.open(outprefix+"-PSI-unfiltered.txt.gz",'wt')
-fhoCtsFiltered = gzip.open(outprefix+"-CTS-filtered.txt.gz",'wt')
-fhoCtsUnfiltered = gzip.open(outprefix+"-CTS-unfiltered.txt.gz",'wt')
-fhoLog = gzip.open(outprefix+"-filterlog.txt.gz",'wt')
+fhoPsiUnfiltered = None
+fhoCtsFiltered = None
+fhoCtsUnfiltered = None
+fhoLog = None
 
 outHeader = "\t".join(outHeader)+"\n"
-
 fhoPsiFiltered.write(outHeader)
-fhoPsiUnfiltered.write(outHeader)
-fhoCtsFiltered.write(outHeader)
-fhoCtsUnfiltered.write(outHeader)
 
-logheader = "Id\tWritten\tNrDatasetsOK\tNonNan"
-logheader += "\tmeanPsiUnfiltered\tvarPsiUnfiltered"
-logheader += "\tmeanCtsUnfiltered\tvarCtsUnfiltered"
-logheader += "\tmeanPsiFiltered\tvarPsiFiltered"
-for dataset in includedDatasets:
-	logheader += "\tMean-"+dataset
-	logheader += "\tVar-"+dataset
-	logheader += "\tN-"+dataset
-	logheader += "\tLowReadCt-"+dataset
-	logheader += "\tNrNonNan-"+dataset
-	logheader += "\tPassQC-"+dataset
-fhoLog.write(logheader+"\n")
+if writeExtraFiles:
+	fhoPsiUnfiltered = gzip.open(outprefix+"-PSI-unfiltered.txt.gz",'wt')
+	fhoCtsFiltered = gzip.open(outprefix+"-CTS-filtered.txt.gz",'wt')
+	fhoCtsUnfiltered = gzip.open(outprefix+"-CTS-unfiltered.txt.gz",'wt')
+	fhoLog = gzip.open(outprefix+"-filterlog.txt.gz",'wt')
+
+	fhoPsiUnfiltered.write(outHeader)
+	fhoCtsFiltered.write(outHeader)
+	fhoCtsUnfiltered.write(outHeader)
+
+	logheader = "Id\tWritten\tNrDatasetsOK\tNonNan"
+	logheader += "\tmeanPsiUnfiltered\tvarPsiUnfiltered"
+	logheader += "\tmeanCtsUnfiltered\tvarCtsUnfiltered"
+	logheader += "\tmeanPsiFiltered\tvarPsiFiltered"
+	for dataset in includedDatasets:
+		logheader += "\tMean-"+dataset
+		logheader += "\tVar-"+dataset
+		logheader += "\tN-"+dataset
+		logheader += "\tLowReadCt-"+dataset
+		logheader += "\tNrNonNan-"+dataset
+		logheader += "\tPassQC-"+dataset
+	fhoLog.write(logheader+"\n")
 
 print()
 print("Processing..")
@@ -301,6 +307,11 @@ debug = 0
 debugQueryId = "chr21:16181687:16231056:clu_184_?"
 debugQueryId = "NeverGonnaGiveYouUp"
 
+valuesPsiFiltered = [0] * len(includedColumns)
+valuesPsiUnfiltered = [0] * len(includedColumns)
+valuesCtsStr = [0] * len(includedColumns)
+valuesCtsUnfiltered = [0] * len(includedColumns)
+
 for line in fh:
 	elems = line.strip().split(" ")
 	ctr = 0
@@ -308,31 +319,31 @@ for line in fh:
 	if rowid == debugQueryId:
 		debug = 1
 		print()
-	valuesPsiFiltered = []
-	valuesPsiUnfiltered = []
-	valuesCtsStr = []
-	valuesCtsUnfiltered = []
+	
 	valuesPerDataset = {}
 	overallNonNan = 0
 
 	# only parse included columns 
+	colctr = 0
 	for i in includedColumns:
 		elem = elems[i]
-		valuesCtsStr.append(elem)
+		valuesCtsStr[colctr] = elem
 		num, denom = elem.split("/")
 		readCt, psiUnfilter, psiFilter = calcPsi(num,denom)
 		if not numpy.isnan(psiFilter):
 			overallNonNan += 1
-		valuesPsiFiltered.append( psiFilter ) # PSI with minimum read ct filter applied
-		valuesCtsUnfiltered.append( readCt )  # Cts without minimum read ct filter applied
-		valuesPsiUnfiltered.append( psiUnfilter ) # PSI without minimum read ct filter applied
+		valuesPsiFiltered[colctr] = psiFilter  # PSI with minimum read ct filter applied
+		valuesCtsUnfiltered[colctr] = readCt   # Cts without minimum read ct filter applied
+		valuesPsiUnfiltered[colctr] = psiUnfilter # PSI without minimum read ct filter applied
+		colctr += 1
 
 	meanPsiUnfiltered, varPsiUnfiltered = meanAndVar(valuesPsiUnfiltered)
 	meanCtsUnfiltered, varCtsUnfiltered = meanAndVar(valuesCtsUnfiltered)
 		
 	# write unfiltered results
-	fhoCtsUnfiltered.write(rowid+"\t"+"\t".join(valuesCtsStr) +"\n") # write unfiltered count input for this subset of samples
-	fhoPsiUnfiltered.write(rowid+"\t"+"\t".join( [str(x) for x in valuesPsiUnfiltered] ) +"\n") # 
+	if writeExtraFiles:
+		fhoCtsUnfiltered.write(rowid+"\t"+"\t".join(valuesCtsStr) +"\n") # write unfiltered count input for this subset of samples
+		fhoPsiUnfiltered.write(rowid+"\t"+"\t".join( [str(x) for x in valuesPsiUnfiltered] ) +"\n") # 
 
 	# apply dataset specific filters
 	okdatasets = 0
@@ -392,12 +403,13 @@ for line in fh:
 				if numpy.isnan(valuesPsiFiltered[i]):
 					valuesPsiFiltered[i] = dsMeanPsi
 		dsOkList.append(dsOK)
-		logln += "\t"+f(dsMeanPsi)
-		logln += "\t"+f(dsVariancePsi)
-		logln += "\t"+str(len(dsPsiVals))
-		logln += "\t"+str(dsLowReadCt)
-		logln += "\t"+str(dsNrNonNan)
-		logln += "\t"+str(dsOK)
+		if writeExtraFiles:
+			logln += "\t"+f(dsMeanPsi)
+			logln += "\t"+f(dsVariancePsi)
+			logln += "\t"+str(len(dsPsiVals))
+			logln += "\t"+str(dsLowReadCt)
+			logln += "\t"+str(dsNrNonNan)
+			logln += "\t"+str(dsOK)
 		if debug == 1:
 			print("{}\t{}\t{}\t{}\t{}\t{}".format(dataset, dsNrNonNan,dsLowReadCt,dsMeanPsi,dsVariancePsi,dsMeanCt))
 	#	print(dataset+"\t"+str(nonNan)+"\t"+str(dsok))
@@ -427,30 +439,36 @@ for line in fh:
 	#	print("Postimpute")
 	#	print("----------")
 	#	print(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
-		fhoCtsFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesCtsStr]) + "\n")
+		if writeExtraFiles:
+			fhoCtsFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesCtsStr]) + "\n")
 		written += 1
 		eventWritten = True
 
 	#sys.exit(-1)
-	loglnStart =  rowid  +"\t"+str(eventWritten)   +"\t"+ str(okdatasets) +"\t"+ str(overallNonNan)
-	loglnStart += "\t"+f(meanPsiUnfiltered)  +"\t"+ f(varPsiUnfiltered)			
-	loglnStart += "\t"+f(meanCtsUnfiltered)  +"\t"+ f(varCtsUnfiltered)			
-	loglnStart += "\t"+f(meanPsiFiltered)    +"\t"+ f(varPsiFiltered)			
-	fhoLog.write(loglnStart+"\t"+logln+"\n")
+	if writeExtraFiles:
+		loglnStart =  rowid  +"\t"+str(eventWritten)   +"\t"+ str(okdatasets) +"\t"+ str(overallNonNan)
+		loglnStart += "\t"+f(meanPsiUnfiltered)  +"\t"+ f(varPsiUnfiltered)			
+		loglnStart += "\t"+f(meanCtsUnfiltered)  +"\t"+ f(varCtsUnfiltered)			
+		loglnStart += "\t"+f(meanPsiFiltered)    +"\t"+ f(varPsiFiltered)			
+		fhoLog.write(loglnStart+"\t"+logln+"\n")
 
 	lineCtr += 1
 
 	if lineCtr % 100 == 0:
 		perc = (written/lineCtr) * 100
 		print("{} lines parsed, {} written - {}%.".format(lineCtr, written, f(perc)), end='\r', flush=True)
-		fhoLog.flush()		
+		if writeExtraFiles:
+			fhoLog.flush()		
 	if debug == 1:
 		exit()
 print("{} lines parsed, {} written - {}%.".format(lineCtr, written, f(perc)), end='\n')
 
 
-fhoLog.close()		
+
 fhoPsiFiltered.close()
-fhoPsiUnfiltered.close()
-fhoCtsUnfiltered.close()
-fhoCtsFiltered.close()
+
+if writeExtraFiles:
+	fhoLog.close()		
+	fhoPsiUnfiltered.close()
+	fhoCtsUnfiltered.close()
+	fhoCtsFiltered.close()

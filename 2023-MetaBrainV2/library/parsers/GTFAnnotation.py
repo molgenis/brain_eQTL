@@ -7,6 +7,7 @@ from features.transcript import Transcript
 from features.strand import Strand
 from features.gene import Gene
 
+from intervaltree import Interval, IntervalTree
 
 
 class GTFAnnotation:
@@ -21,6 +22,8 @@ class GTFAnnotation:
     notparsedtypes = set()
 
     genesPerChr = {}
+
+    intervalTreeByChr = {}
 
     def __init__(self, gtffile):      
         self.parse(gtffile)
@@ -46,6 +49,8 @@ class GTFAnnotation:
         fh.close()
         for type in self.notparsedtypes:
             print("Unknown type of feature in file: "+type)
+
+        # index by chr
         if self.genes is not None:
             self.genesPerChr = {}
             for gene in self.genes:
@@ -54,6 +59,18 @@ class GTFAnnotation:
                     arr = []
                 arr.append(gene)
                 self.genesPerChr[gene.chr] = arr
+                tree = self.intervalTreeByChr.get(gene.chr)
+                if tree is None:
+                    tree = IntervalTree()
+                tree[gene.start:gene.stop] = gene
+                self.intervalTreeByChr[gene.chr] = tree
+        print()
+        print("Loaded genes per chromosome:")
+        for chr in self.genesPerChr.keys():
+            arr = self.genesPerChr.get(chr)
+            tree = self.intervalTreeByChr.get(chr)
+            print(f"{chr}\t{len(arr)}\t{len(tree)}")
+        print()
 
     def getOrCreateGene(self, chr,start,stop,strand,annotation):
         gid = annotation.get("gene_id")
@@ -131,6 +148,22 @@ class GTFAnnotation:
             output[chr] = genesInChr
         return output
 
+    def getGenesByRange(self, chr, start, stop, wiggle):
+        return None
+
+    def getOverlappingGenes(self, feature, wiggle):
+        tree = self.intervalTreeByChr.get(feature.chr)
+        if tree is None:
+            return None
+        start = feature.start - wiggle
+        if start < 0:
+            start = 0
+        stop = feature.stop + wiggle    
+        intervals = tree[start:stop]
+        genes = []
+        for interval in intervals:
+            genes.append(interval.data)
+        return genes
 
     def parseln(self, line):
         elems = line.split("\t")

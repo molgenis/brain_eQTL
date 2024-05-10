@@ -22,6 +22,11 @@ class Transcript(Feature):
             self.exonRanks = {}
         self.exonRanks[exon] = rank
 
+    def getExonRank(self, exon):
+        if self.exonRanks is None:
+            return None
+        return self.exonRanks.get(exon)
+        
     def describe(self):
         nrExons = 0
         if self.exons is not None:
