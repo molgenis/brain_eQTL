@@ -82,7 +82,7 @@ def ztransformvals(vals):
 		mean += f
 		tmp.append(f)
 	mean /= len(vals)
-	variance = var(vals, mean)
+	variance = var(tmp, mean)
 	stdev = math.sqrt(variance)
 	for i in range(0,len(vals)):
 		v = (tmp[i] - mean)/stdev
@@ -91,11 +91,13 @@ def ztransformvals(vals):
 
 # concatenate and z-transform
 #for dataset in datasets:
-def concatenateDataset(indir, tmpoutfile, dataset):
-	
+def concatenateAndZtransformDataset(indir, tmpoutfile, dataset):
+	print("Concatenating and Z-transforming dataset: "+indir+"/"+dataset)
 	fho = gzip.open(tmpoutfile,'wt')
+	print(f"mergeqq: {mergeqq}")
 	for chr in range(1,23):
 		file = indir+"/"+dataset+"/"+dataset+".phen_chr"+str(chr)
+		
 		if not os.path.exists(file):
 			file = indir+"/"+dataset+"/"+dataset+".phen_chr"+str(chr)+".gz"
 		if mergeqq:
@@ -105,20 +107,25 @@ def concatenateDataset(indir, tmpoutfile, dataset):
 		if not os.path.exists(file):
 			print("Could not find file (or non-gzipped version of): "+file+" for dataset "+dataset)
 			sys.exit(-1)
-
+		print(file)
 		fh = getfh(file)
 		if chr == 1:
 			header = fh.readline().strip().split()
 			header = "\t".join(header[4:len(header)])
-			fho.write(header+"\n")
+			fho.write("SpliceEvent\t"+header+"\n")
 		else:
 			fh.readline()
+		lctr = 0
 		for line in fh:
 			elems = line.strip().split()
 			id = elems[3]
 			vals = elems[4:len(elems)]
 			vals = ztransformvals(vals)
 			fho.write(id+"\t"+"\t".join(vals)+"\n")
+			lctr += 1
+			if lctr % 1000 == 0:
+				print(f"{lctr} lines parsed",end='\r')
+		print(f"{lctr} lines parsed",end='\n')
 	fho.close()
 	return tmpoutfile
 
@@ -203,6 +210,7 @@ def pca(file, nrcomponents, outprefix):
 #     return tmp
 
 def regressPCs(spliceFile, pcaFile, nPCs, outfileResiduals):
+	print("Regressing PCs...: "+spliceFile)
 	dfSplice = pd.read_csv(spliceFile, sep='\t', index_col=0)
 	dfSplice = dfSplice.transpose() # ??
 	dfSplice.index.name = 'Sample'
@@ -270,11 +278,6 @@ def regressPCs(spliceFile, pcaFile, nPCs, outfileResiduals):
 
 	outfhResiduals.close()
 	print("Done")
-
-
-
-
-
 
 def mergeAllDatasetsPerChromosome():
 	for chr in range(1,23):
@@ -380,12 +383,34 @@ def concatenateAllMergedChromosomes():
 			fho.write(line)
 	fho.close()
 
+def splitByChr(inputfile, outputprefix):
+	chrwriters = []
+	fh = gzip.open(inputfile,'rt')
+	header = fh.readline()
+	for chr in range(1,23):
+		outputfile = outputprefix.replace("CHR",str(chr))
+		handle = gzip.open(outputfile,'wt')
+		handle.write(header)
+		chrwriters.append(handle)
+	
+	for line in fh:
+		elems = line.split("\t",2)
+		id = elems[1]
+		chr = int(id.split(":")) # assume ID is split by 
+		chrwriters[chr].write(line)
 
+	for chr in range(1,23):
+		chrwriters[chr].close()
+
+
+datasetstmp = []
+datasetstmp.append(datasets[0])
+datasets = datasetstmp
 
 for dataset in datasets:
 	# concatenate and z-transform
 	ztransformedoutput = outputprefix+"/"+dataset+".phen.ztransform.gz"
-	concatenateDataset(indir, ztransformedoutput, dataset)
+	concatenateAndZtransformDataset(indir, ztransformedoutput, dataset)
 	# determine 15 PCs (in stead of PEER factors)
 	pcaoutput = outputprefix+"/"+dataset+".phen.pca"
 	pcaoutput = pca(ztransformedoutput, 15, pcaoutput)
@@ -393,8 +418,8 @@ for dataset in datasets:
 	residualoutput = outputprefix+"/"+dataset+".phen.pca.15PCsRemoved.txt.gz"
 	regressPCs(ztransformedoutput,pcaoutput,15,residualoutput)
 	# split back into one file per chromosome
-	splitoutputprefix = outputprefix+"/"+dataset+".phen.pca.15PCsRemoved"
-	splitByChr(splitoutputprefix)
+	splitoutputprefix = outputprefix+"/"+dataset+".phen.pca.15PCsRemoved-chrCHR.txt.gz"
+	splitByChr(residualoutput,splitoutputprefix)
 
 mergeAllDatasetsPerChromosome()
 concatenateAllMergedChromosomes()
