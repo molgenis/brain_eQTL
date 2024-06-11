@@ -144,8 +144,8 @@ def main(ratio_file, outdir, chroms, blacklist_chroms, pcs=50):
             valRows.append(valRow)
             geneRows.append("\t".join([chr_,s,e,chrom]))
             if len(geneRows) % 1000 == 0:
-                sys.stderr.write("Parsed %s introns...\n"%len(geneRows))
-
+                print("Parsed %s introns..."%len(geneRows), end='\r')
+    print("Parsed %s introns...\n"%len(geneRows), end='\n')
     for i in fout:
         fout[i].close()
 

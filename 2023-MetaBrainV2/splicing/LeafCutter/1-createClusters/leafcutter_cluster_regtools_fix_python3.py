@@ -26,7 +26,7 @@ def getrfh(fname):
 
 def getwfh(fname):
     if fname[-3:] == ".gz":
-        return gzip.open(fname, 'wt')
+        return gzip.open(fname, 'wt', 5)
     else:
         return open(fname,'w')        
 
@@ -143,7 +143,7 @@ def sort_junctions(libl, options):
         libName = "%s/%s"%(rundir,libN.split('/')[-1])
         by_chrom = {}
         foutName = libName+'.%s.sorted.gz'%(runName.split("/")[-1])
-
+        print("Storing sorted output: "+foutName)
         fout_runlibs.write(foutName+'\n')
 
         if options.verbose:   
@@ -227,6 +227,7 @@ def refine_clusters(options):
     fout = getwfh(outFile)
 
     Ncl = 0
+    lnctr = 0
     for ln in getrfh(inFile):
         clu = []
         totN = 0
@@ -256,6 +257,9 @@ def refine_clusters(options):
                         buf += "%d:%d" % interval + ":%d"%(count)+ " "
                     Ncl += 1
                     fout.write(buf+'\n')
+        lnctr+=1
+        print(f"{lnctr} lines parsed ",end='\r')
+    print(f"{lnctr} lines parsed ",end='\n')
 
     sys.stderr.write("Split into %s clusters...\n"%Ncl)
     fout.close()

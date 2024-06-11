@@ -39,17 +39,24 @@ outfile = sys.argv[3]
 # splicefile = ""
 # outfile = ""
 
-def getfh(file):
-    if file.endswith(".gz"):
-        return gzip.open(file, 'rt')
-    return open(file)
+def getrfh(fname):
+    if fname[-3:] == ".gz":
+        return gzip.open(fname, 'rt')
+    else:
+        return open(fname,'r'   )
+
+def getwfh(fname):
+    if fname[-3:] == ".gz":
+        return gzip.open(fname, 'wt', 5)
+    else:
+        return open(fname,'w')  
 
 
 # load junctions and clusters
 junctions = []
 clusters = {}
 print("Loading splice junctions from: " + splicefile)
-fh = getfh(splicefile)
+fh = getrfh(splicefile)
 fh.readline()
 lctr = 0
 for line in fh:
@@ -78,10 +85,10 @@ annotation = GTFAnnotation(gtffile)
 # genesByChr = annotation.getGenesByChromosome()
 
 # annotate genes within each cluster
-fho = gzip.open(outfile + "-nearestgene-annotation.txt.gz", 'wt')
-fho4 = gzip.open(outfile + "-overlappingGenesAndExons.txt.gz", 'wt')
-fho2 = gzip.open(outfile + "-nearestgene-clusters.txt.gz", 'wt')
-fho3 = gzip.open(outfile + "-nearestgene-junctions.txt.gz", 'wt')
+fho = getwfh(outfile + "-nearestgene-annotation.txt.gz")
+fho4 = getwfh(outfile + "-overlappingGenesAndExons.txt.gz")
+fho2 = getwfh(outfile + "-nearestgene-clusters.txt.gz")
+fho3 = getwfh(outfile + "-nearestgene-junctions.txt.gz")
 fho.write("Platform\tFeatureId\tFeatureChr\tFeatureChrStart\tFeatureChrEnd\tMappedGeneId\tMappedGeneSymbol\tMappedGeneCoordinates\tMappedGeneStrand\tMappedGeneType\tMappedGeneDistance\tFeatureOverlapsMappedGene\n")
 fho4.write("Platform\tFeatureId\tFeatureChr\tFeatureChrStart\tGene\tGeneSymbol\tGeneCoords\tGeneStrand\tGeneType\tGeneDistance\tTranscriptName\tTranscriptCoordinates\tTranscriptDistance\tExonName\tExonRank\tExonCoords\tExonDistance\n")
 jctr = 0
