@@ -21,7 +21,7 @@ def logit(v):
     return v
 
 fh = gzip.open(psiFile,'rt')
-fho = gzip.open(outfileLogit,'wt')
+fho = gzip.open(outfileLogit,'wt',5)
 header = fh.readline().split("\t")
 header[0] = "-"
 fho.write("\t".join(header))

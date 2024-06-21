@@ -47,7 +47,7 @@ def getrfh(fname):
 
 def getwfh(fname):
     if fname[-3:] == ".gz":
-        return gzip.open(fname, 'wt', 5)
+        return gzip.open(fname, 'wt', 4)
     else:
         return open(fname,'w')  
 

@@ -26,12 +26,16 @@ parser.add_argument("-i","--sampleinclude", help="Sample include list (after --s
 parser.add_argument("-o","--out", help="Output prefix",required=True)
 parser.add_argument("--minNrDatasets", help="Minimal number of datasets per junction",default=2)
 parser.add_argument("--minAvgPSI", help="Minimal PSI value",default=0.01)
+parser.add_argument("--minStDevPSI", help="Minimal PSI stdev value",default=0.005)
 parser.add_argument("--averageImpute", help="Replace NaN values with average calculated over non-NaN samples",action='store_true')
 parser.add_argument("--averageImputeMissingDatasets", help="Replace NaN values with average calculated over non-NaN samples, also for datasets that have not data at all, or those that didn't pass QC (like the default in LeafCutter)",action='store_true')
 parser.add_argument("--averageImputePerDataset", help="Replace NaN values with average calculated over non-NaN samples per dataset",action='store_true')
-parser.add_argument("--minNonNaNPerDataset",help="Minimal number of non-NaN samples per dataset",default=30)
+parser.add_argument("--minNonNaNPerDataset",help="Minimal number of non-NaN samples per dataset (if specified < 1, will be interpreted as proportion of total)",default=30)
 parser.add_argument("--minEventCt",help="Minimal number counts in the junction numerator per sample (values below this number will be replaced by NaN)",default=10)
-
+parser.add_argument("--writeExtraFiles",help="Write additional output matrices (raw unfiltered PSI values etc)",action='store_true')
+parser.add_argument("--removeNonStandardChr",help="Remove non-autosomal and non-X or non-Y splice events",action='store_true')
+parser.add_argument("--removeNonAutosomal",help="Remove non-autosomal splice events",action='store_true')
+parser.add_argument("--usePseudoCount",help="Use pseudocount in PSI calculation",action='store_true')
 
 args = vars(parser.parse_args())
 
@@ -42,8 +46,9 @@ samplelimitfile = args["sampleinclude"]  # expression to dataset
 outprefix  = args["out"]
 minnrdatasets = int(args["minNrDatasets"])
 
-minNonNanPerDataset = int(args["minNonNaNPerDataset"])
+minNonNanPerDataset = float(args["minNonNaNPerDataset"])
 minAvgPsi = float(args["minAvgPSI"])
+minStDevPsi = float(args["minStDevPSI"])
 maxAvgPsi = 1-(float(args["minAvgPSI"]))
 minnrdatasets = int(args["minNrDatasets"])
 minEventCt = int(args["minEventCt"])
@@ -51,6 +56,10 @@ minEventCt = int(args["minEventCt"])
 imputeAverage = args["averageImpute"]
 imputeAverageMissingDatasets = args["averageImputeMissingDatasets"]
 imputeAveragePerDataset = args["averageImputePerDataset"]
+writeExtraFiles = args["writeExtraFiles"]
+removeNonAutosomal = args["removeNonAutosomal"]
+removeNonStandardChr = args["removeNonStandardChr"]
+usePseudoCount = args["usePseudoCount"]
 
 if imputeAverage and imputeAveragePerDataset:
 	print("Error: cannot average impute over all samples and per dataset at the same time!")
@@ -58,37 +67,29 @@ if imputeAverage and imputeAveragePerDataset:
 
 pprint(args)
 
-#if len(sys.argv) > 7:
-#	lowq = sys.argv[7]
-#	lowq = lowq.lower()
-#	if lowq == "true":
-#		minAvgPsi = 0
-#		maxAvgPsi = 1
-		
-#		print("!!! Low quality mode !!!")
-#	elif low != "false":
-#		print("expect true or false for command line argument 7")
-#		sys.exit(0)
-
-
-
-
 # main functions
-
-
 def calcPsi(num, denom):
 	# returns list: readct, psi unfiltered, psi filtered
 	try:
 		num = float(num)
 		denom = float(denom)
+		psi = 0
 		if denom < 1:
 			return [denom, numpy.nan, numpy.nan]
 		elif denom < minEventCt:
-			return [denom, num/denom, numpy.nan]	
+			if usePseudoCount:
+				psi = (num+0.5)/(denom+0.5)
+			else:
+				psi = num/denom
+			return [denom, psi, numpy.nan]	
 		elif num < 1:
 			return [denom, 0, 0]
 		else:
-			return [denom, num/denom, num/denom]
+			if usePseudoCount:
+				psi = (num+0.5)/(denom+0.5)
+			else:
+				psi = num/denom
+			return [denom, psi, psi]
 	except:
 		return [0, numpy.nan, numpy.nan]
 
@@ -152,6 +153,7 @@ samplesPerDataset = None
 sampleToDataset = None
 selectedSamples = None
 
+# link samples to datasets
 if etdfile is not None:
 	samplesPerDataset = {}
 	sampleToDataset = {}
@@ -186,6 +188,7 @@ includedSamplesPerDataset = {}
 relativeColIdsForDataset  = {}
 matchingsamples 	  = set()
 
+# parse the header of the leafcutter count file
 for col in header:
 	if colCtr == 0:
 		outHeader.append(col)
@@ -261,9 +264,7 @@ includedDatasetsArr.sort()
 includedDatasets = includedDatasetsArr
 
 # write header
-writeExtraFiles = False
-
-fhoPsiFiltered = gzip.open(outprefix+"-PSI-filtered.txt.gz",'wt')
+fhoPsiFiltered = gzip.open(outprefix+"-PSI-filtered.txt.gz",'wt',3)
 fhoPsiUnfiltered = None
 fhoCtsFiltered = None
 fhoCtsUnfiltered = None
@@ -273,10 +274,10 @@ outHeader = "\t".join(outHeader)+"\n"
 fhoPsiFiltered.write(outHeader)
 
 if writeExtraFiles:
-	fhoPsiUnfiltered = gzip.open(outprefix+"-PSI-unfiltered.txt.gz",'wt')
-	fhoCtsFiltered = gzip.open(outprefix+"-CTS-filtered.txt.gz",'wt')
-	fhoCtsUnfiltered = gzip.open(outprefix+"-CTS-unfiltered.txt.gz",'wt')
-	fhoLog = gzip.open(outprefix+"-filterlog.txt.gz",'wt')
+	fhoPsiUnfiltered = gzip.open(outprefix+"-PSI-unfiltered.txt.gz",'wt',5)
+	fhoCtsFiltered = gzip.open(outprefix+"-CTS-filtered.txt.gz",'wt',5)
+	fhoCtsUnfiltered = gzip.open(outprefix+"-CTS-unfiltered.txt.gz",'wt',5)
+	fhoLog = gzip.open(outprefix+"-filterlog.txt.gz",'wt',5)
 
 	fhoPsiUnfiltered.write(outHeader)
 	fhoCtsFiltered.write(outHeader)
@@ -300,7 +301,7 @@ print("Processing..")
 print()
 
 # iterate input file
-lineCtr    = 0
+lineCtr = 0
 written = 0
 
 debug = 0
@@ -316,141 +317,176 @@ for line in fh:
 	elems = line.strip().split(" ")
 	ctr = 0
 	rowid = elems[0] # always append first column
+	spliceId = rowid.split(":")
+	chr = spliceId[0].replace("chr","").lower()
+	sexchr = False
+	autosomal = False
+	if chr == "x" or chr == "y":
+		sexchr = True
+	else:
+		try:
+			chr = int(chr)
+			if chr > 0 and chr < 23:
+				autosomal = True
+		except:
+			pass
+	skip = False
+	
+	if removeNonAutosomal and not autosomal:
+		skip = True
+	if removeNonStandardChr and not (autosomal or sexchr):
+		skip = True
+
 	if rowid == debugQueryId:
 		debug = 1
 		print()
 	
-	valuesPerDataset = {}
-	overallNonNan = 0
+	if not skip:
 
-	# only parse included columns 
-	colctr = 0
-	for i in includedColumns:
-		elem = elems[i]
-		valuesCtsStr[colctr] = elem
-		num, denom = elem.split("/")
-		readCt, psiUnfilter, psiFilter = calcPsi(num,denom)
-		if not numpy.isnan(psiFilter):
-			overallNonNan += 1
-		valuesPsiFiltered[colctr] = psiFilter  # PSI with minimum read ct filter applied
-		valuesCtsUnfiltered[colctr] = readCt   # Cts without minimum read ct filter applied
-		valuesPsiUnfiltered[colctr] = psiUnfilter # PSI without minimum read ct filter applied
-		colctr += 1
+		valuesPerDataset = {}
+		overallNonNan = 0
 
-	meanPsiUnfiltered, varPsiUnfiltered = meanAndVar(valuesPsiUnfiltered)
-	meanCtsUnfiltered, varCtsUnfiltered = meanAndVar(valuesCtsUnfiltered)
+		# only parse included columns 
+		colctr = 0
+		for i in includedColumns:
+			elem = elems[i]
+			valuesCtsStr[colctr] = elem
+			num, denom = elem.split("/")
+			readCt, psiUnfilter, psiFilter = calcPsi(num,denom)
+			if not numpy.isnan(psiFilter):
+				overallNonNan += 1
+			valuesPsiFiltered[colctr] = psiFilter  # PSI with minimum read ct filter applied
+			valuesCtsUnfiltered[colctr] = readCt   # Cts without minimum read ct filter applied
+			valuesPsiUnfiltered[colctr] = psiUnfilter # PSI without minimum read ct filter applied
+			colctr += 1
+			
+		# write unfiltered results
+		if writeExtraFiles:
+			fhoCtsUnfiltered.write(rowid+"\t"+"\t".join(valuesCtsStr) +"\n") # write unfiltered count input for this subset of samples
+			fhoPsiUnfiltered.write(rowid+"\t"+"\t".join( [str(x) for x in valuesPsiUnfiltered] ) +"\n") # 
+
+		# apply dataset specific filters
+		okdatasets = 0
+		logln = ""
+		dsOkList = []
+		totalNonNan = 0
 		
-	# write unfiltered results
-	if writeExtraFiles:
-		fhoCtsUnfiltered.write(rowid+"\t"+"\t".join(valuesCtsStr) +"\n") # write unfiltered count input for this subset of samples
-		fhoPsiUnfiltered.write(rowid+"\t"+"\t".join( [str(x) for x in valuesPsiUnfiltered] ) +"\n") # 
+		for dataset in includedDatasets:
+			dsNrNonNan = 0
+			dsLowReadCt = 0
+			dsMeanPsi   = 0
+			dsMeanCt = 0
+			dsOK   = False
+			dsPsiVals = []
+			dsVariancePsi = 0
 
-	# apply dataset specific filters
-	okdatasets = 0
-	logln = ""
-	dsOkList = []
-	totalNonNan = 0
-	for dataset in includedDatasets:
-		dsNrNonNan = 0
-		dsLowReadCt = 0
-		dsMeanPsi   = 0
-		dsMeanCt = 0
-		dsOK   = False
-		dsPsiVals = []
-		dsVariancePsi = 0
+			relativeColsForDs = relativeColIdsForDataset.get(dataset)
+			if relativeColsForDs is None:
+				print("ERROR: no column selection for "+dataset)
+				sys.exit(-1)
 
-		relativeColsForDs = relativeColIdsForDataset.get(dataset)
-		if relativeColsForDs is None:
-			print("ERROR: no column selection for "+dataset)
-			sys.exit(-1)
-
-		for i in relativeColsForDs:
-			v = valuesPsiFiltered[i]
-			c = valuesCtsUnfiltered[i]
-			if c < minEventCt:
-				dsLowReadCt += 1
-			dsPsiVals.append(v)
-			if not numpy.isnan(v):
-				dsMeanPsi += v
-				dsNrNonNan  += 1
-				totalNonNan += 1
-				dsMeanCt  += c
-			else:
-				valuesCtsStr[i] = "0/0"
-		
-		if dsNrNonNan >= minNonNanPerDataset:
-			# dsMeanPsi = 0
-			if dsNrNonNan > 0:
-				dsMeanPsi /= dsNrNonNan
-				dsVariancePsi = var(dsPsiVals, dsMeanPsi)
-			else:
-				dsVariancePsi = 0
-			if dsMeanPsi >= minAvgPsi and dsMeanPsi <= maxAvgPsi and dsVariancePsi > 0:
-				# values for dataset pass QC
-				okdatasets += 1
-				dsOK = True
-		else:
-			dsMeanPsi = 0
-
-		if not dsOK:
-			# wipe values for dataset to NaN, but not when we're imputing missing values in bad datasets
-			if not imputeAverageMissingDatasets:
-				for i in relativeColsForDs:
-					valuesPsiFiltered[i] = numpy.nan
-					valuesCtsStr[i] = "0/0"
-		elif imputeAveragePerDataset: # this requires the dataset to pass QC
 			for i in relativeColsForDs:
-				if numpy.isnan(valuesPsiFiltered[i]):
-					valuesPsiFiltered[i] = dsMeanPsi
-		dsOkList.append(dsOK)
-		if writeExtraFiles:
-			logln += "\t"+f(dsMeanPsi)
-			logln += "\t"+f(dsVariancePsi)
-			logln += "\t"+str(len(dsPsiVals))
-			logln += "\t"+str(dsLowReadCt)
-			logln += "\t"+str(dsNrNonNan)
-			logln += "\t"+str(dsOK)
-		if debug == 1:
-			print("{}\t{}\t{}\t{}\t{}\t{}".format(dataset, dsNrNonNan,dsLowReadCt,dsMeanPsi,dsVariancePsi,dsMeanCt))
-	#	print(dataset+"\t"+str(nonNan)+"\t"+str(dsok))
+				v = valuesPsiFiltered[i]
+				c = valuesCtsUnfiltered[i]
+				if c < minEventCt:
+					dsLowReadCt += 1
+				dsPsiVals.append(v)
+				if not numpy.isnan(v):
+					dsMeanPsi += v
+					dsNrNonNan  += 1
+					totalNonNan += 1
+					dsMeanCt  += c
+				else:
+					valuesCtsStr[i] = "0/0"
+			dsNonNanThreshold = minNonNanPerDataset
+			if minNonNanPerDataset < 1:
+				dsNonNanThreshold = minNonNanPerDataset * len(dsPsiVals)
+			
+			if dsNrNonNan >= dsNonNanThreshold:
+				# dsMeanPsi = 0
+				if dsNrNonNan > 1:
+					dsMeanPsi /= dsNrNonNan
+					dsVariancePsi = var(dsPsiVals, dsMeanPsi)
+				else:
+					dsVariancePsi = 0
+
+				# ala leafcutter: impute then calculate stdev
+				if imputeAveragePerDataset:
+					dsPsiVals = []
+					for i in relativeColsForDs:
+						if numpy.isnan(valuesPsiFiltered[i]):
+							valuesPsiFiltered[i] = dsMeanPsi
+						dsPsiVals.append(valuesPsiFiltered[i])
+				if dsMeanPsi >= minAvgPsi and dsMeanPsi <= maxAvgPsi and dsVariancePsi > minStDevPsi:
+					# values for dataset pass QC
+					okdatasets += 1
+					dsOK = True
+			else:
+				dsMeanPsi = 0
+
+			if not dsOK:
+				# wipe values for dataset to NaN, but not when we're imputing missing values in bad datasets
+				if not imputeAverageMissingDatasets:
+					for i in relativeColsForDs:
+						valuesPsiFiltered[i] = numpy.nan
+						valuesCtsStr[i] = "0/0"
+			# elif imputeAveragePerDataset: # this requires the dataset to pass QC
+			# 	for i in relativeColsForDs:
+			# 		if numpy.isnan(valuesPsiFiltered[i]):
+			# 			valuesPsiFiltered[i] = dsMeanPsi
+			dsOkList.append(dsOK)
+			if writeExtraFiles:
+				logln += "\t"+f(dsMeanPsi)
+				logln += "\t"+f(dsVariancePsi)
+				logln += "\t"+str(len(dsPsiVals))
+				logln += "\t"+str(dsLowReadCt)
+				logln += "\t"+str(dsNrNonNan)
+				logln += "\t"+str(dsOK)
+			if debug == 1:
+				print("{}\t{}\t{}\t{}\t{}\t{}".format(dataset, dsNrNonNan,dsLowReadCt,dsMeanPsi,dsVariancePsi,dsMeanCt))
+		#	print(dataset+"\t"+str(nonNan)+"\t"+str(dsok))
+			
 		
-	meanPsiFiltered, varPsiFiltered = meanAndVar(valuesPsiFiltered)
-	#print(rowid+"\t"+str(meanPsiFiltered)+"\t"+str(totalNonNan))
+		#print(rowid+"\t"+str(meanPsiFiltered)+"\t"+str(totalNonNan))
 
-	#print("Preimpute: ")
-	#print(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
-	#print("------")
-	# replace missing values with overall average, only for datasets that passed QC
-	if imputeAverage:
-		for d in range(0,len(includedDatasets)):
-			if dsOkList[d] or imputeAverageMissingDatasets:
-				dataset = includedDatasets[d]
-				relativeColsForDs = relativeColIdsForDataset.get(dataset)
-				for i in relativeColsForDs:
-					if numpy.isnan(valuesPsiFiltered[i]):
-						valuesPsiFiltered[i] = meanPsiFiltered
-					#	print(rowid+"\t"+dataset+"\t"+str(valuesPsiFiltered[i]))
+		#print("Preimpute: ")
+		#print(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
+		#print("------")
+		# replace missing values with overall average, only for datasets that passed QC
+		if imputeAverage:
+			meanPsiFiltered, varPsiFiltered = meanAndVar(valuesPsiFiltered)
+			for d in range(0,len(includedDatasets)):
+				if dsOkList[d] or imputeAverageMissingDatasets:
+					dataset = includedDatasets[d]
+					relativeColsForDs = relativeColIdsForDataset.get(dataset)
+					for i in relativeColsForDs:
+						if numpy.isnan(valuesPsiFiltered[i]):
+							valuesPsiFiltered[i] = meanPsiFiltered
+						#	print(rowid+"\t"+dataset+"\t"+str(valuesPsiFiltered[i]))
 
 
-	# write if result passes filters
-	eventWritten = False
-	if okdatasets >= minnrdatasets:
-		fhoPsiFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
-	#	print("Postimpute")
-	#	print("----------")
-	#	print(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
+		# write if result passes filters
+		eventWritten = False
+		if okdatasets >= minnrdatasets:
+			fhoPsiFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
+		#	print("Postimpute")
+		#	print("----------")
+		#	print(rowid+"\t"+"\t".join([str(x) for x in valuesPsiFiltered]) + "\n")
+			if writeExtraFiles:
+				fhoCtsFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesCtsStr]) + "\n")
+			written += 1
+			eventWritten = True
+
+		#sys.exit(-1)
 		if writeExtraFiles:
-			fhoCtsFiltered.write(rowid+"\t"+"\t".join([str(x) for x in valuesCtsStr]) + "\n")
-		written += 1
-		eventWritten = True
-
-	#sys.exit(-1)
-	if writeExtraFiles:
-		loglnStart =  rowid  +"\t"+str(eventWritten)   +"\t"+ str(okdatasets) +"\t"+ str(overallNonNan)
-		loglnStart += "\t"+f(meanPsiUnfiltered)  +"\t"+ f(varPsiUnfiltered)			
-		loglnStart += "\t"+f(meanCtsUnfiltered)  +"\t"+ f(varCtsUnfiltered)			
-		loglnStart += "\t"+f(meanPsiFiltered)    +"\t"+ f(varPsiFiltered)			
-		fhoLog.write(loglnStart+"\t"+logln+"\n")
+			meanPsiUnfiltered, varPsiUnfiltered = meanAndVar(valuesPsiUnfiltered)
+			meanCtsUnfiltered, varCtsUnfiltered = meanAndVar(valuesCtsUnfiltered)
+			meanPsiFiltered, varPsiFiltered = meanAndVar(valuesPsiFiltered)
+			loglnStart =  rowid  +"\t"+str(eventWritten)   +"\t"+ str(okdatasets) +"\t"+ str(overallNonNan)
+			loglnStart += "\t"+f(meanPsiUnfiltered)  +"\t"+ f(varPsiUnfiltered)			
+			loglnStart += "\t"+f(meanCtsUnfiltered)  +"\t"+ f(varCtsUnfiltered)			
+			loglnStart += "\t"+f(meanPsiFiltered)    +"\t"+ f(varPsiFiltered)			
+			fhoLog.write(loglnStart+"\t"+logln+"\n")
 
 	lineCtr += 1
 
@@ -461,6 +497,7 @@ for line in fh:
 			fhoLog.flush()		
 	if debug == 1:
 		exit()
+perc = (written/lineCtr) * 100
 print("{} lines parsed, {} written - {}%.".format(lineCtr, written, f(perc)), end='\n')
 
 
