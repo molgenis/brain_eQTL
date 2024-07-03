@@ -90,7 +90,7 @@ for chr in range(1,23):
 	
 	tmpoutfile = f"{outputprefix}-chr{chr}.txt.gz"
 
-	fho = gzip.open(tmpoutfile,'wt',5)
+	fho = gzip.open(tmpoutfile,'wt',3)
 	header = "id"
 	sampleset = "\t".join(allsamples)
 	header = header + "\t" + sampleset
@@ -130,7 +130,7 @@ for chr in range(1,23):
 tmpoutfile = f"{outputprefix}.txt.gz"
 
 print(f"concatenating into: {tmpoutfile}")
-fho = gzip.open(tmpoutfile,'wt',5)
+fho = gzip.open(tmpoutfile,'wt',3)
 
 for chr in range(1,23):
 	infile = f"{outputprefix}-chr{chr}.txt.gz"

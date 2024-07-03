@@ -290,7 +290,7 @@ for i in range(1,len(header)):
     if cramMap is not None:
         sample = cramMap.get(cram)
         if sample is None:
-            print("Warning: "+sample+" was not found in sample conversion file")
+            print("Warning: "+cram+" was not found in sample conversion file")
             sample = cram
             ok = True
     else:

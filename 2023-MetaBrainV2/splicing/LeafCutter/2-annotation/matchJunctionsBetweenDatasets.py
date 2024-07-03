@@ -35,6 +35,7 @@ def getJunctions(file):
     junctions = []
     print("Reading junctions from: "+file)
     fh = getfh(file,'r')
+    linectr = 0
     for line in fh:
         junctionId = line.strip().split("\t",2)[0]
         idelems = junctionId.split(":")
@@ -44,6 +45,11 @@ def getJunctions(file):
                 chrs.add(idelems[0])
             else:
                 junctions.append(junction)
+        linectr += 1
+        if linectr % 1000 == 0:
+            print(f"{linectr} lines parsed. {len(junctions)} junctions",end='\r')
+    print(f"{linectr} lines parsed. {len(junctions)} junctions",end='\n')
+    fh.close()
     if len(chrs) > 0:
         print("Some junctions on these chromosomes were not parsed: ")
         for chr in chrs:
