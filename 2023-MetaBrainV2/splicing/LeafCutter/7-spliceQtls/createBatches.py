@@ -2,8 +2,8 @@ import gzip
 import sys
 import os
 import glob
+import argparse
 
-debug = False
 
 def gzopen(file):
 	if file.endswith(".gz"):
@@ -11,25 +11,64 @@ def gzopen(file):
 	else:
 		return open(file,'r')
 
-if len(sys.argv) < 9:
-    print("Usage: createbatches.py batchnameprefix expfile.txt.gz gte.txt genotype.vcf.gz genelist.txt.gz annotation.txt.gz " +
-          "[group_annotation.txt] template.sh nrmaxgenesperbatch outdir")
-    actr = 0
-    for arg in sys.argv:
-        print(str(actr)+"\t"+arg)
-        actr += 1
-    sys.exit(0)
+parser = argparse.ArgumentParser()
+parser.add_argument("--batchnameprefix", dest="batchnameprefix",
+	help="Batch name prefix", required=True)
 
-batchnameprefix = sys.argv[1]
-expfile = sys.argv[2]
-gte = sys.argv[3]
-genotype = sys.argv[4]
-genelist = sys.argv[5]
-annotation = sys.argv[6]
-groupsfile = sys.argv[7]
-template = sys.argv[8]
-nrgenes = int(sys.argv[9])
-out = sys.argv[10]
+parser.add_argument("--exp", dest="expfile",
+	help="Expression file", required=True)
+
+parser.add_argument("--gte", dest="gte",
+	help="GTE file", required=True)
+
+parser.add_argument("--vcf", dest="genotype",
+	help="VCF genotypes", required=True)
+
+parser.add_argument("--genelist", dest="genelist",
+	help="List of genes to include", required=True)
+
+parser.add_argument("--annotation", dest="annotation",
+	help="Annotation file", required=True)
+
+parser.add_argument("--groups", dest="groupsfile",
+	help="List defining groups of genes/features/etc")
+
+parser.add_argument("--template", dest="template",
+	help="Job template", required=True)
+
+parser.add_argument("--nrgenes", dest="nrgenes",
+	help="Nr Genes per batch", default=200)
+
+parser.add_argument("--outdir", dest="out",
+	help="Output directory", required=True)
+
+parser.add_argument("--debug", dest="debug",
+	help="Debug?",action='store_true')
+
+args = vars(parser.parse_args())
+
+
+debug = args["debug"]
+
+# if len(sys.argv) < 9:
+#     print("Usage: createbatches.py batchnameprefix expfile.txt.gz gte.txt genotype.vcf.gz genelist.txt.gz annotation.txt.gz " +
+#           "[group_annotation.txt] template.sh nrmaxgenesperbatch outdir")
+#     actr = 0
+#     for arg in sys.argv:
+#         print(str(actr)+"\t"+arg)
+#         actr += 1
+#     sys.exit(0)
+
+batchnameprefix = args["batchnameprefix"]
+expfile = args["expfile"]
+gte = args["gte"]
+genotype = args["genotype"]
+genelist = args["genelist"]
+annotation = args["annotation"]
+groupsfile = args["groupsfile"]
+template = args["template"]
+nrgenes = int(args["nrgenes"])
+out = args["out"]
 
 os.makedirs(out, exist_ok=True)
 
@@ -48,25 +87,26 @@ if not out.endswith("/"):
 
 
 def writeJob(exp, gte, gt, template, batchfile, jobfile, outprefix, logprefix, chr, annotation, groups, jobname):
-    if debug:
-        print("Writing job: "+jobfile)
-    fh = open(template,'r')
-    lines = fh.readlines()
-    fh.close()
-    fho = open(jobfile,'w')
-    for line in lines:
-        line = line.replace("JOBNAME",jobname)
-        line = line.replace("GENOTYPE",gt)
-        line = line.replace("GTE",gte)
-        line = line.replace("EXPRESSION",exp)
-        line = line.replace("CHROM",str(chr))
-        line = line.replace("BATCHFILE",batchfile)
-        line = line.replace("OUTPREFIX",outprefix)
-        line = line.replace("LOGPREFIX",logprefix)
-        line = line.replace("ANNOTATION", annotation)
-        line = line.replace("GROUPS", groups)
-        fho.write(line)
-    fho.close()
+	if debug:
+		print("Writing job: "+jobfile)
+	fh = open(template,'r')
+	lines = fh.readlines()
+	fh.close()
+	fho = open(jobfile,'w')
+	for line in lines:
+		line = line.replace("JOBNAME",jobname)
+		line = line.replace("GENOTYPE",gt)
+		line = line.replace("GTE",gte)
+		line = line.replace("EXPRESSION",exp)
+		line = line.replace("CHROM",str(chr))
+		line = line.replace("BATCHFILE",batchfile)
+		line = line.replace("OUTPREFIX",outprefix)
+		line = line.replace("LOGPREFIX",logprefix)
+		line = line.replace("ANNOTATION", annotation)
+		if groups is not None:
+			line = line.replace("GROUPS", groups)
+		fho.write(line)
+	fho.close()
 
 
 def checkDir(path):
@@ -90,7 +130,7 @@ checkDir(abspath+"/jobs/")
 checkDir(abspath+"/logs/")
 
 # read the ids from the expression file
-print("Reading: "+expfile)
+print("Reading exp file: "+expfile)
 fh = gzopen(expfile)
 genesPresentInData = set()
 fh.readline()
@@ -131,32 +171,33 @@ for line in fh:
             genesPerChr[chr] = chrgenes
             annotread = annotread + 1
 fh.close()
-print("Annotation read for {} splice events".format(annotread))
+print("Annotation read for {} genes/features".format(annotread))
 
 # read gene groupings
-print("Reading: "+groupsfile)
 groups = None
 geneToGroup = None
-if os.path.exists(groupsfile):
-	groups = {}
-	geneToGroup = {}
-	fh = None
-	if groupsfile.endswith(".gz"):
-		fh = gzip.open(groupsfile,'rt')
-	else:
-		fh = open(groupsfile,'r')
-	for line in fh:
-		elems = line.strip().split("\t")
-		id = elems[0]
-		grp = elems[1]
-		grpset = groups.get(grp)
-		if grpset is None:
-			grpset = set()
-		grpset.add(id)
-		groups[grp] = grpset
-		geneToGroup[id] = grp
-	fh.close()
-	print("{} groups loaded from {}".format(len(groups), groupsfile))
+if groupsfile is not None:
+	print("Reading gene groups: "+groupsfile)
+	if os.path.exists(groupsfile):
+		groups = {}
+		geneToGroup = {}
+		fh = None
+		if groupsfile.endswith(".gz"):
+			fh = gzip.open(groupsfile,'rt')
+		else:
+			fh = open(groupsfile,'r')
+		for line in fh:
+			elems = line.strip().split("\t")
+			id = elems[0]
+			grp = elems[1]
+			grpset = groups.get(grp)
+			if grpset is None:
+				grpset = set()
+			grpset.add(id)
+			groups[grp] = grpset
+			geneToGroup[id] = grp
+		fh.close()
+		print("{} groups loaded from {}".format(len(groups), groupsfile))
 
 chrs = []
 for chr in genesPerChr.keys():
