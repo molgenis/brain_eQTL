@@ -2,17 +2,25 @@ nextflow.enable.dsl=2
 
 process convertBAMToFASTQ {
   containerOptions "--bind ${params.bindFolder}"
+
+  afterScript """
+  mkdir -p ${params.outDir}/bam_to_fastq/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/bam_to_fastq/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/bam_to_fastq/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/bam_to_fastq/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/bam_to_fastq/${sampleName}/command.log.gz
+  """
+  
   errorStrategy 'retry'
   maxRetries 999
-  maxForks 10
+  
+  input:
+  tuple val(sampleName), val(samplePath)
 
   time '6h'
   memory '8 GB'
   cpus 1
-  
-  input:
-  val samplePath
-  val sampleName
   
   output:
   path "fastq_output", emit: fastqPath
@@ -27,13 +35,9 @@ process convertBAMToFASTQ {
   # Get the extension of the sample
   extension=$(awk -F '.' '{print $NF}' <<< "${sampleFiles[0]}")
 
-  # Split the file path by '/' to and get the last part (this is the sample name)
-  IFS='/' read -r -a directories <<< "${sampleFiles[0]}"
-  fileName="${directories[-1]}"
-  sampleName=${fileName%".$extension"}
-
   # Clean the path (remove invisble characters)
   cleaned_path=$(echo "${sampleFiles[0]}" | tr -d '[[:cntrl:]]')
+
   
   # Check if the sample is a .bam file
   if [[ "$extension" == *"bam" ]]; then
@@ -47,15 +51,15 @@ process convertBAMToFASTQ {
     wc -l)
 
     # 2. Sort the BAM file by name
-    samtools sort -n ${sample} -o "sorted_${sampleName}.bam"
+    samtools sort -n ${sample} -o "sorted_!{sampleName}.bam"
 
     # 3. Create command arguments
     if [[ "${numFASTQFiles}" -eq 1 ]]; 
     then
-      arguments="fastq -0 fastq_output/!{sampleName}.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -0 fastq_output/!{sampleName}.fastq.gz -n sorted_!{sampleName}.bam"
     elif [ "${numFASTQFiles}" -gt 1 ];
     then
-      arguments="fastq -1 fastq_output/!{sampleName}_1.fastq.gz -2 fastq_output/!{sampleName}_2.fastq.gz -n sorted_${sampleName}.bam"
+      arguments="fastq -1 fastq_output/!{sampleName}_1.fastq.gz -2 fastq_output/!{sampleName}_2.fastq.gz -n sorted_!{sampleName}.bam"
     else
       exit 1
     fi
@@ -89,6 +93,15 @@ process fastqcQualityControl {
   errorStrategy 'retry'
   maxRetries 999
 
+  afterScript """
+  mkdir -p ${params.outDir}/fastqc/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/fastqc/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/fastqc/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/fastqc/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/fastqc/${sampleName}/command.log.gz
+  """
+
   time '6h'
   memory '8 GB'
   cpus 1
@@ -99,6 +112,7 @@ process fastqcQualityControl {
 
   output:
   file "${sampleName}/*_fastqc.zip"
+  path ".command.*"
   val task.workDir, emit: workDir
 
   shell:
@@ -113,9 +127,18 @@ process fastqcQualityControl {
 
 process alignWithSTAR {
   containerOptions "--bind ${params.bindFolder}"
-  publishDir "${params.outDir}/star/", mode: 'copy', pattern: "*/*.{gz}"
+  publishDir "${params.outDir}/star/", mode: 'copy', pattern: "${sampleName}/*.{gz}"
   errorStrategy 'retry'
   maxRetries 999
+
+  afterScript """
+  mkdir -p ${params.outDir}/star/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/star/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/star/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/star/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/star/${sampleName}/command.log.gz
+  """
 
   time '6h'
   memory '50 GB'
@@ -140,18 +163,6 @@ process alignWithSTAR {
   IFS='/' read -r -a directories <<< "${firstFile}"
   fileName="${directories[-1]}"
 
-  # Remove .gz extension from the file name
-  sampleName=${fileName%".gz"}
-
-  # Remove the fastq extension from the file name
-  extension=$(awk -F '.' '{print $NF}' <<< "$sampleName")
-  sampleName=${sampleName%".$extension"}
-
-  # For paired end, remove _1 and _2 suffix from the sample name
-  if [[ $sampleName == *_1 || $sampleName == *_2 ]]; then
-    sampleName="${sampleName%??}"
-  fi
-
   # Create output directory
   mkdir !{sampleName}
 
@@ -166,17 +177,23 @@ process alignWithSTAR {
     numMism=2
   fi
 
-  # Set different --readFilesIn values for paired and single end
-  if [[ -f !{sampleDir}/${sampleName}_2.fastq.gz ]]; then
+  # Count fastq files
+  fastqCount=$(ls -1 "!{sampleDir}" | wc -l)
+
+  # If data is paired end (more than one fastq file), double nuMism parameter
+  if [[ "$fastqCount" -gt 1 ]]; then
      let numMism=$numMism*2
-     readFilesInArgument="--readFilesIn !{sampleDir}/${sampleName}_1.fastq.gz !{sampleDir}/${sampleName}_2.fastq.gz"
-  else
-     readFilesInArgument="--readFilesIn !{sampleDir}/${sampleName}.fastq.gz"
   fi
+
+  # Set readFilesIn argument
+  readFilesInArgument="--readFilesIn"
+  for file in !{sampleDir}/*; do
+    readFilesInArgument+=" $file "
+  done
 
   # Run the STAR command
   STAR --runThreadN 8 \
-  --outFileNamePrefix ${sampleName}/${sampleName}_ \
+  --outFileNamePrefix !{sampleName}/!{sampleName}_ \
   --outSAMtype BAM Unsorted \
   --genomeDir !{params.refDir} \
   --genomeLoad NoSharedMemory \
@@ -184,13 +201,13 @@ process alignWithSTAR {
   --outFilterMismatchNmax ${numMism} \
   --twopassMode Basic \
   --quantMode GeneCounts \
-  --outSAMunmapped Within \
   --readFilesCommand zcat \
+  --outSAMunmapped Within \
   ${readFilesInArgument}
 
   # Gzip all output files
-  gzip ${sampleName}/*.tab
-  gzip ${sampleName}/*.out
+  gzip !{sampleName}/*.tab
+  gzip !{sampleName}/*.out
 '''
 }
 
@@ -198,6 +215,15 @@ process sortBAM {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
   maxRetries 999
+
+  afterScript """
+  mkdir -p ${params.outDir}/sort_bam/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/sort_bam/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/sort_bam/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/sort_bam/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/sort_bam/${sampleName}/command.log.gz
+  """
 
   time '6h'
   memory '8 GB'
@@ -223,6 +249,15 @@ process markDuplicates {
   publishDir "${params.outDir}/mark_duplicates/", mode: 'copy', pattern: "*/*.{gz}"
   errorStrategy 'retry'
   maxRetries 999
+
+  afterScript """
+  mkdir -p ${params.outDir}/mark_duplicates/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/mark_duplicates/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/mark_duplicates/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/mark_duplicates/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/mark_duplicates/${sampleName}/command.log.gz
+  """
 
   time '6h'
   memory '12 GB'
@@ -255,6 +290,15 @@ process QCwithRNASeqMetrics {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
   maxRetries 999
+
+  afterScript """
+  mkdir -p ${params.outDir}/rna_seq_metrics/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/rna_seq_metrics/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/rna_seq_metrics/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/rna_seq_metrics/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/rna_seq_metrics/${sampleName}/command.log.gz
+  """
 
   time '6h'
   memory '12 GB'
@@ -293,6 +337,15 @@ process QCwithMultipleMetrics {
   errorStrategy 'retry'
   maxRetries 999
 
+  afterScript """
+  mkdir -p ${params.outDir}/multiple_metrics/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/multiple_metrics/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/multiple_metrics/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/multiple_metrics/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/multiple_metrics/${sampleName}/command.log.gz
+  """
+
   time '6h'
   memory '12 GB'
   cpus 1
@@ -327,6 +380,15 @@ process identifyAlternativeSplicingSitesrMATS {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
   maxRetries 999
+
+  afterScript """
+  mkdir -p ${params.outDir}/rmats/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/rmats/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/rmats/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/rmats/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/rmats/${sampleName}/command.log.gz
+  """
 
   time '6h'
   memory '8 GB'
@@ -387,6 +449,15 @@ process identifyAlternativeSplicingSitesLeafCutter {
   errorStrategy 'retry'
   maxRetries 999
 
+  afterScript """
+  mkdir -p ${params.outDir}/leafcutter/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/leafcutter/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/leafcutter/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/leafcutter/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/leafcutter/${sampleName}/command.log.gz
+  """
+
   time '6h'
   memory '8 GB'
   cpus 1
@@ -420,6 +491,15 @@ process convertBAMToCRAM {
   errorStrategy 'retry'
   maxRetries 999
 
+  afterScript """
+  mkdir -p ${params.outDir}/cram/${sampleName}
+  gzip ./.command.*
+  cp ./.command.sh.gz ${params.outDir}/cram/${sampleName}/command.sh.gz
+  cp ./.command.err.gz ${params.outDir}/cram/${sampleName}/command.err.gz
+  cp ./.command.out.gz ${params.outDir}/cram/${sampleName}/command.out.gz
+  cp ./.command.log.gz ${params.outDir}/cram/${sampleName}/command.log.gz
+  """
+
   time '6h'
   memory '10 GB'
   cpus 1
@@ -441,30 +521,11 @@ process convertBAMToCRAM {
   """
 }
 
-def extractSampleName(String path) {
-    // Split the path by ';' to handle multiple paths
-    def paths = path.split(';')
-
-    // Initialize a set to store unique sample names
-    Set<String> sampleNameSet = new HashSet<>()
-    
-    // Extract and process the sample names for each path
-    paths.each { pathPart ->
-        // Extract the sample name and remove _1 or _2 if present
-        def sampleNamePart = pathPart.tokenize("/").last().replaceAll(/\.(fastq|fq|bam|gz)/, '').replaceAll(/_(1|2)$/, '')
-        
-        // Add the cleaned sample name to the set
-        sampleNameSet << sampleNamePart
-    }
-    
-    // Join the unique sample names with '_'
-    def sampleName = sampleNameSet.join("_")
-    
-    return sampleName
+def splitSampleNamesandPaths(String input) {
+    return new Tuple2(input.split(',')[0], input.split(',')[1])
 }
 
 def checkIfSampleIsProcessed(String folderName, String sampleName) {
-    sampleName = extractSampleName(sampleName)
     
     // An array containing all the folders that are expected for a succesful pipeline run for a sample
     def expectedFolders = [
@@ -478,11 +539,11 @@ def checkIfSampleIsProcessed(String folderName, String sampleName) {
     ];
 
     // An array containing the expected number of files in order of the folders above
-    def expectedNumberOfFiles = [1, 5, 8, 2, 36, 1, 1];
+    def expectedNumberOfFiles = [5, 9, 12, 6, 40, 5, 5];
 
     // Loop through expected folders and number of expected files
     for (int i = 0; i < expectedNumberOfFiles.size; i++) {
-        
+//        println "Looking for folder: "+expectedFolders[i]    
         // Return false if the expected folder does not exist
         if (!new File(expectedFolders[i]).exists()) {
            return false;
@@ -493,13 +554,14 @@ def checkIfSampleIsProcessed(String folderName, String sampleName) {
            return false;
         }
       }
+
       return true;
 }
 
 process removeWorkDirs {
   containerOptions "--bind ${params.bindFolder}"
   errorStrategy 'retry'
-  maxRetries 999
+  maxRetries 5
 
   time '1h'
   memory '1 GB'
@@ -520,6 +582,7 @@ process removeWorkDirs {
   script:
   """
   sleep 5
+
   rm -r ${bamToFastqWorkDir} || echo 'Failed to remove work directory'
   rm -r ${fastQCWorkDir} || echo 'Failed to remove work directory'
   rm -r ${alignWithStarWorkDir} || echo 'Failed to remove work directory'
@@ -536,22 +599,22 @@ process removeWorkDirs {
 workflow {
     // Load list with sample paths from the input text file
     String samplePaths = new File(params.sampleFile).text
-    String[] samplePathsArray = samplePaths.split('\n')
-
-    // Create a list of sample names extracted from the sample paths
-    List<String> sampleNamesList = samplePathsArray.collect { extractSampleName(it) }
-    String[] sampleNamesArray = sampleNamesList as String[]
+    String[] splittedSamplePaths = samplePaths.split('\n')
+    println "Nr sample paths: "+splittedSamplePaths.length
     
-    // Create channels of the sample paths and sample names
-    samplePathsChannel = Channel.of(samplePathsArray)
-    sampleNamesChannel = Channel.of(sampleNamesArray)
+    List<Tuple2<String, String>> tupleList = splittedSamplePaths.collect { splitSampleNamesandPaths(it) }
+    println "Nr sample tuples: "+tupleList.size()
+
+    Tuple2<String, String>[] tupleArray = tupleList as Tuple2<String, String>[]
+    println "Nr sample tuples in arr: "+tupleArray.length
+
+    def channel = Channel.of(tupleArray)
 
     // Remove samples from the channels that are already in the output folder
-    filteredPathsChannel = samplePathsChannel.filter { !checkIfSampleIsProcessed(params.outDir, it) }
-    filteredNamesChannel = sampleNamesChannel.filter { !checkIfSampleIsProcessed(params.outDir, it) }
+    filteredChannel = channel.filter { !checkIfSampleIsProcessed(params.outDir, it[0]) }
 
     // Run pipeline
-    convertBAMToFASTQ(filteredPathsChannel, filteredNamesChannel)
+    convertBAMToFASTQ(filteredChannel)
     fastqcQualityControl(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
     alignWithSTAR(convertBAMToFASTQ.out.fastqPath, convertBAMToFASTQ.out.sampleName)
     sortBAM(alignWithSTAR.out.bamFile, alignWithSTAR.out.sampleName)

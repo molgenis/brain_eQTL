@@ -1,3 +1,4 @@
+#!/opt/conda/envs/eQTLGenPopAssign/bin/Rscript
 # Author: Urmo Võsa
 # Edited by Joost Bakker
 

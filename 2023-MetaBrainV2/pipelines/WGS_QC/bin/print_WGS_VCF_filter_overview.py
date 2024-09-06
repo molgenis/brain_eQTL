@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-
+#!/opt/conda/envs/eQTLGenPopAssign/bin/python
 """
 File:         print_WGS_VCF_filter_overview.py
 Created:      2022/10/20
@@ -255,7 +254,7 @@ class main():
         try:
             with gzip.open(filepath, 'rt') as f:
                 for line in f:
-                    (_, reason, stats) = line.split("\t")
+                    (_, reason, stats, sec) = line.split("\t")
                     if reason == "MultiAllelic":
                         multi_allelic += 1
                     elif reason == "IndelBelowVQSR":
@@ -301,6 +300,7 @@ class main():
 
     @staticmethod
     def save_file(df, outpath, header=True, index=False, sep=","):
+        print(df)
         df.to_csv(outpath, sep=sep, index=index, header=header)
         print("\tSaved dataframe: {} "
               "with shape: {}".format(os.path.basename(outpath),

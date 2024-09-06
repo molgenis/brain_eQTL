@@ -1,3 +1,4 @@
+#!/opt/conda/envs/eQTLGenPopAssign/bin/Rscript
 # Author: Urmo Võsa
 # Edited by Joost Bakker
 
@@ -81,13 +82,12 @@ if (length(related_individuals) > 0) {
   # Remove these indices from the indices that remained after the previous check
   passed_samples <- target_bed$fam$`sample.ID`[
     (!target_bed$fam$`sample.ID` %in% samples_to_remove_due_to_relatedness)]
-
 } else{
     passed_samples <- target_bed$fam$`sample.ID`
 }
 
 # Write passed samples to file
 fileConn<-file("RelatednessPassedSamples.txt")
-writeLines(passed_samples, fileConn)
+writeLines(as.character(passed_samples), fileConn)
 close(fileConn)
 

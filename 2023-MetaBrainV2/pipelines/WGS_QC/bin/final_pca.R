@@ -1,3 +1,4 @@
+#!/opt/conda/envs/eQTLGenPopAssign/bin/Rscript
 # Author: Urmo Võsa
 # Edited by Joost Bakker
 
@@ -35,7 +36,9 @@ read_fam <- function(path) {
 # Create command line argument list
 option_list <- list(
     make_option(c("--target_bed"), type = "character",
-    help = "Path to the target genotype file (bed/bim/fam format). Required file extension: .bed.")
+    help = "Path to the target genotype file (bed/bim/fam format). Required file extension: .bed."),
+    make_option(c("--population"), type = "character",
+    help = "Super population label (EUR/AMR/AFR/SAS/EAS)")
     )
 
 # Create arg parser and pars args
@@ -51,7 +54,7 @@ target_pca_qcd <- bed_autoSVD(bed_qc, k = 10, ncores = 4)
 
 # Visualise loadings
 plot(target_pca_qcd, type = "loadings", loadings = 1:10, coeff = 0.6)
-ggsave("Target_PCs_postQC_Loadings.png", type = "cairo", height = (5 * 7) * 0.7, width = (5 * 7) * 0.7, units = "in", dpi = 300)
+ggsave(paste(args$population, "Target_PCs_postQC_Loadings.png", sep="_"), type = "cairo", height = (5 * 7) * 0.7, width = (5 * 7) * 0.7, units = "in", dpi = 300)
 
 PCsQ <- predict(target_pca_qcd)
 PCsQ <- as.data.frame(PCsQ)
@@ -68,11 +71,11 @@ p5 <- ggplot(PCsQ, aes(x = PC9, y = PC10)) + theme_bw() + geom_point(alpha = 0.5
 p <- p1 + p2 + p3 + p4 + p5 + plot_layout(nrow = 3)
 
 # Save plots
-ggsave("Target_PCs_postQC.png", type = "cairo", height = 10 * 1.5, width = 9 * 1.3, units = "in", dpi = 300)
-ggsave("Target_PCs_postQC.pdf", height = 10 * 1.5, width = 9 * 1.3, units = "in", dpi = 300)
+ggsave(paste(args$population, "Target_PCs_postQC.png", sep="_"), type = "cairo", height = 10 * 1.5, width = 9 * 1.3, units = "in", dpi = 300)
+ggsave(paste(args$population, "Target_PCs_postQC.pdf", sep="_"), height = 10 * 1.5, width = 9 * 1.3, units = "in", dpi = 300)
 
 # Write PCs to text file
-fwrite(PCsQ, "GenotypePCs.txt", row.names = TRUE, sep = "\t", quote = FALSE)
+fwrite(PCsQ, paste(args$population, "GenotypePCs.txt", sep="_"), row.names = TRUE, sep = "\t", quote = FALSE)
 
 # Create scree plots
 singlar_value <- data.frame(
@@ -87,5 +90,5 @@ theme_bw() +
 ylab("Singular value")
 
 # Save scree plots
-ggsave("Target_PCs_scree_postQC.png", type = "cairo", height = 5, width = 9, units = "in", dpi = 300)
-ggsave("Target_PCs_scree_postQC.pdf", height = 5, width = 9, units = "in", dpi = 300)
+ggsave(paste(args$population, "Target_PCs_scree_postQC.png", sep="_"), type = "cairo", height = 5, width = 9, units = "in", dpi = 300)
+ggsave(paste(args$population, "Target_PCs_scree_postQC.pdf", sep="_"), height = 5, width = 9, units = "in", dpi = 300)

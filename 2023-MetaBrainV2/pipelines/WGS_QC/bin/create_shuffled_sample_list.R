@@ -1,3 +1,5 @@
+#!/opt/conda/envs/eQTLGenPopAssign/bin/Rscript
+
 library(optparse)
 library(data.table)
 

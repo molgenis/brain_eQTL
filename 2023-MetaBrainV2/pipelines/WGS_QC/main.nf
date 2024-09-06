@@ -1,9 +1,10 @@
 nextflow.enable.dsl=2
 
 process mergeVCFFiles {
+  publishDir "${params.outDir}/1_merge_vcfs/", mode: 'copy', pattern: "*.{stats}"
   containerOptions "--bind ${params.bindFolder}"
 
-  time '12h'
+  time '32h'
   memory '32 GB'
   cpus 1
 
@@ -11,41 +12,21 @@ process mergeVCFFiles {
   path sampleFile
 
   output:
-  path "merged.vcf.gz"
+  path "merged.vcf.gz", emit: vcfFile
+  path "*.stats"
 
   shell:
   '''
   bcftools merge -0 -l !{sampleFile} -Oz -o merged.vcf.gz
-  '''
-}
-
-process createGteFile {
-  containerOptions "--bind ${params.bindFolder}"
-
-  time '6h'
-  memory '1 GB'
-  cpus 1
-  
-  input:
-  path vcfFile
-  
-  output:
-  path "gte.txt"
-  
-  shell:
-  '''
-  samples=$(bcftools query -l !{vcfFile})
-
-  echo "$samples" | while read sample; do
-      echo -e "$sample\t$sample"
-  done > "gte.txt"
+  bcftools stats merged.vcf.gz > merged.stats
   '''
 }
 
 process splitByChromosome {
+  publishDir "${params.outDir}/2_split_by_chromosome/", mode: 'copy', pattern: "*.{log,txt,stats}"
   containerOptions "--bind ${params.bindFolder}"
 
-  time '6h'
+  time '6d'
   memory '8 GB'
   cpus 1
 
@@ -53,7 +34,8 @@ process splitByChromosome {
   path vcfFile
   
   output:
-  path "*.vcf.gz"
+  path "*.vcf.gz", emit: vcfFile
+  path "*.stats"
   
   shell:
   '''
@@ -67,15 +49,17 @@ process splitByChromosome {
   bcftools index -s !{vcfFile} | cut -f 1 | while read C; do
     if [[ " ${chromosomes[*]} " =~ ${C#"chr"} ]]; then
       bcftools view -Oz -o split.${C}.vcf.gz !{vcfFile} ${C}
+      bcftools stats split.${C}.vcf.gz > split.${C}.stats
     fi
   done
   '''
 }
 
-process removeMultiAllelicVariants {
+process splitMultiAllelicVariants {
+  publishDir "${params.outDir}/3_split_multi_allelics/", mode: 'copy', pattern: "*.{stats}"
   containerOptions "--bind ${params.bindFolder}"
 
-  time '6h'
+  time '24h'
   memory '16 GB'
   cpus 1
 
@@ -83,27 +67,26 @@ process removeMultiAllelicVariants {
   path vcfFile
   
   output:
-  path "no_multi_allelic.*.vcf.gz"
+  path "norm.*.vcf.gz", emit: vcfFile
+  path "*.stats"
   
   shell:
   '''
-  # 1. Extract chromosome number from file name
-  IFS='.' read -r -a fileNameParts <<< "!{vcfFile}"
-  chromosome="${fileNameParts[1]}"
+  # 1. Get chromosome from first record
+  chromosome=$(zgrep -v '^#' !{vcfFile} | head -n 1 | cut -f 1)
 
   # 2. Split multi-allelic variants
-  #bcftools norm -m -any !{vcfFile} -Oz -o "norm.${chromosome}.vcf.gz"
+  bcftools norm -m -any !{vcfFile} -Oz -o "norm.${chromosome}.vcf.gz"
+  bcftools stats norm.${chromosome}.vcf.gz > norm.${chromosome}.stats
 
-  # 2. Remove multi allelic variants
-  bcftools view --max-alleles 2 !{vcfFile} -Oz -o "no_multi_allelic.${chromosome}.vcf.gz"
   '''
 }
 
 process wgsQC {
   containerOptions "--bind ${params.bindFolder}"
-  publishDir "${params.outDir}/0_filter_vcf/", mode: 'copy', pattern: "*.{log,txt}"
+  publishDir "${params.outDir}/4_wgs_qc/", mode: 'copy', pattern: "*.{log,txt}"
 
-  time '6h'
+  time '24h'
   memory '8 GB'
   cpus 1
 
@@ -113,19 +96,21 @@ process wgsQC {
   output:
   path "*-filtered.vcf.gz", emit: vcfFile
   path "*.log"
+  path "*.log.gz"
   path "*.txt"
   
   shell:
   '''
-  # 1. Extract chromosome number from file name
-  IFS='.' read -r -a fileNameParts <<< "!{vcfFile}"
-  chromosome="${fileNameParts[1]}"
+  # 1. Get chromosome from first record
+  chromosome=$(zgrep -v '^#' !{vcfFile} | head -n 1 | cut -f 1)
 
   # 2. Define command arguments
   commandArguments="--input !{vcfFile} \
-  --output no_multi_allelic.${chromosome} \
-  --sex !{params.sexFile}
-  --ignore_homref_stats"
+  --output norm.${chromosome} \
+  --sex !{params.sexFile} \
+  --ignore_homref_stats \
+  --remove_non_pass_snv \
+  --remove_non_pass_indel"
 
   # 3. If the chromosome does not contain any numbers (so it's a sex chromosome), add hardy weinberg argument
   if ! [[ ${chromosome} =~ [0-9] ]]; then
@@ -133,20 +118,20 @@ process wgsQC {
   fi
 
   # 4. Run the custom VCF filter script
-  python3 !{baseDir}/scripts/custom_vcf_filter.py ${commandArguments} \
-  | tee custom_vcf_filter.log
+  custom_vcf_filter.py ${commandArguments} \
+  | tee ${chromosome}.custom_vcf_filter.log
 
   # 5. Create filter log
-  python3 !{baseDir}/scripts/print_WGS_VCF_filter_overview.py \
+  print_WGS_VCF_filter_overview.py \
     --workdir . --chr ${chromosome} \
-    --vcf_file_format "no_multi_allelic.${chromosome}.vcf.gz"
+    --vcf_file_format "norm.${chromosome}.vcf.gz"
   '''
 }
 
 process convertVCFToPlink {
   containerOptions "--bind ${params.bindFolder}"
 
-  time '6h'
+  time '24h'
   memory '8 GB'
   cpus 1
 
@@ -158,9 +143,8 @@ process convertVCFToPlink {
   
   shell:
   '''
-  # 1. Extract chromosome number from file name
-  IFS='.' read -r -a fileNameParts <<< "!{vcfFile}"
-  chromosome="${fileNameParts[1]}"
+  # 1. Get chromosome from first record
+  chromosome=$(zgrep -v '^#' !{vcfFile} | head -n 1 | cut -f 1)
 
   # 2. Make output dir
   mkdir plink_out_${chromosome}
@@ -170,7 +154,7 @@ process convertVCFToPlink {
   --const-fid \
   --make-pgen \
   --output-chr 26 \
-  --set-missing-var-ids @:#[b38]\\$r,\\$a \
+  --set-all-var-ids @:#[b38]\\$r,\\$a \
   --new-id-max-allele-len 1000 \
   --sort-vars \
   --out "plink_out_${chromosome}/${chromosome}_converted_vcf"
@@ -181,10 +165,10 @@ process convertVCFToPlink {
 }
 
 process mergePlinkFiles {
-  publishDir "${params.outDir}/1_merge_plink/", mode: 'copy'
+  publishDir "${params.outDir}/5_merge_plink/", mode: 'copy', pattern: "*.{log}"
   containerOptions "--bind ${params.bindFolder}"
 
-  time '6h'
+  time '24h'
   memory '12 GB'
   cpus 1
 
@@ -195,7 +179,8 @@ process mergePlinkFiles {
   path 'chrAll.bed', emit: bedFile
   path 'chrAll.bim', emit: bimFile
   path 'chrAll.fam', emit: famFile
-  
+  path '*.log'
+
   shell:
   '''
   # 1. Split input filepath string into separate paths
@@ -227,12 +212,15 @@ process mergePlinkFiles {
   done
 
   # 5. Run plink merge command to merge files
-  ~/plink2 --pmerge-list merge_list.txt --merge-par --make-bed --out "chrAll" 
+  ~/plink2 --pmerge-list merge_list.txt --merge-par --make-bed --out "chrAll"
+
+  # 6. Create fam file with sex data
+  create_sex_fam_file.py chrAll.fam !{params.sexFile} chrAll
   '''
 }
 
 process calculateAlleleFrequencies {
-  publishDir "${params.outDir}/2_calculate_allele_frequencies/", mode: 'copy', pattern: "*.{log, gz}"
+  publishDir "${params.outDir}/6_calculate_allele_frequencies/", mode: 'copy', pattern: "*.{log, gz}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -263,7 +251,7 @@ process calculateAlleleFrequencies {
 }
 
 process plotTargetAndRefAlleleFrequencies {
-  publishDir "${params.outDir}/3_plot_allele_frequencies/", mode: 'copy', pattern: "*.{png}"
+  publishDir "${params.outDir}/7_plot_allele_frequencies/", mode: 'copy', pattern: "*.{png}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -278,12 +266,12 @@ process plotTargetAndRefAlleleFrequencies {
   
   script:
   """
-  Rscript ${baseDir}/scripts/plot_allele_frequencies.R --ref_afs ${params.refAFs} --target_afs ${targetAFs}
+  plot_allele_frequencies.R --ref_afs ${params.refAFs} --target_afs ${targetAFs}
   """
 }
 
 process snpAndGenotypeQC {
-  publishDir "${params.outDir}/4_snp_and_genotype_qc/", mode: 'copy', pattern: "*.{log}"
+  publishDir "${params.outDir}/8_snp_and_genotype_qc/", mode: 'copy', pattern: "*.{log}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -299,6 +287,7 @@ process snpAndGenotypeQC {
   path 'chrAll_QC.bed', emit: bedFile
   path 'chrAll_QC.bim', emit: bimFile
   path 'chrAll_QC.fam', emit: famFile
+  path '*.log'
 
   shell:
   '''
@@ -320,7 +309,7 @@ process snpAndGenotypeQC {
 }
 
 process sexCheck {
-  publishDir "${params.outDir}/5_sex_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+  publishDir "${params.outDir}/9_sex_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -347,7 +336,7 @@ process sexCheck {
   ~/plink2 --bed ${bedFile} \
       --bim ${bimFile} \
       --fam ${famFile} \
-      --chr X \
+      --chr 23 \
       --maf ${params.maf} \
       --split-par b38 \
       --make-bed \
@@ -366,10 +355,10 @@ process sexCheck {
       --check-sex 0.4 0.6 \
       --threads 4
 
-  # 5. Plot results
-  Rscript ${baseDir}/scripts/plot_sex_check.R --sex_check_file plink.sexcheck
+  # 4. Plot results
+  plot_sex_check.R --sex_check_file plink.sexcheck
 
-  # 6. Remove samples that failed sex check
+  # 5. Remove samples that failed sex check
   ~/plink2 --bed ${bedFile} \
     --bim ${bimFile} \
     --fam ${famFile} \
@@ -387,7 +376,7 @@ process sexCheck {
 }
 
 process heterozygosityCheck {
-  publishDir "${params.outDir}/6_het_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+  publishDir "${params.outDir}/10_het_check/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -411,7 +400,7 @@ process heterozygosityCheck {
   
   script:
   """
-  # 1. Pruning
+  # 4. Pruning
   ~/plink2 --bed ${bedFile} \
       --bim ${bimFile} \
       --fam ${famFile} \
@@ -419,7 +408,7 @@ process heterozygosityCheck {
       --indep-pairwise 50 1 0.2 \
       --threads 4
 
-  # 2. Heterozygosity check
+  # 5. Heterozygosity check
   ~/plink2 --bed ${bedFile} \
       --bim ${bimFile} \
       --fam ${famFile} \
@@ -429,10 +418,10 @@ process heterozygosityCheck {
       --read-freq ${alleleFrequencies} \
       --out het_check_results
 
-  # 3. Plot results
-  Rscript ${baseDir}/scripts/plot_het_check.R --het_check_file het_check_results.het
+  # 6. Plot results
+  plot_het_check.R --het_check_file het_check_results.het
 
-  # 4. Remove failed samples
+  # 7. Remove failed samples
   ~/plink2 --bed ${bedFile} \
     --bim ${bimFile} \
     --fam ${famFile} \
@@ -442,34 +431,8 @@ process heterozygosityCheck {
   """
 }
 
-process projectSamplesToRefPanel {
-  publishDir "${params.outDir}/7_project_samples_to_ref_panel/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
-  containerOptions "--bind ${params.bindFolder}"
-
-  time '6h'
-  memory '16 GB'
-  cpus 1
-
-  input:
-  path bedFile
-  path bimFile
-  path famFile
-  
-  output:
-  path '*.png'
-  path '*.pdf'
-  path '1000G_PC_projections.txt'
-  path 'PopAssignResults.txt'
-  
-  script:
-  """
-  Rscript ${baseDir}/scripts/project_samples_to_superpop.R --ref_bed ${params.refPath}.bed \
-    --target_bed ${bedFile} --ref_pop ${params.refPop}
-  """
-}
-
 process relatednessCheck {
-  publishDir "${params.outDir}/8_relatedness_check/", mode: 'copy', pattern: "*.{log,txt,kin0}"
+  publishDir "${params.outDir}/11_relatedness_check/", mode: 'copy', pattern: "*.{log,txt,kin0}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -500,7 +463,7 @@ process relatednessCheck {
     --threads 4 \
 
   # 2. Create sample list of non-related samples
-  Rscript ${baseDir}/scripts/find_related_samples.R --kin_file related.kin0 --target_bed ${bedFile}
+  find_related_samples.R --kin_file related.kin0 --target_bed ${bedFile}
 
   # 3. Remove samples that are not on the list created above
   ~/plink2 --bed ${bedFile} \
@@ -512,8 +475,8 @@ process relatednessCheck {
   """
 }
 
-process targetPCA {
-  publishDir "${params.outDir}/9_target_pca/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+process projectSamplesToRefPanel {
+  publishDir "${params.outDir}/12_project_samples_to_ref_panel/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -526,65 +489,116 @@ process targetPCA {
   path famFile
   
   output:
-  path 'toImputation.bed', emit: bedFile
-  path 'toImputation.bim', emit: bimFile
-  path 'toImputation.fam', emit: famFile
-  path 'SamplesToInclude.txt', emit: sampleFile
+  path '*.png'
+  path '*.pdf'
+  path '1000G_PC_projections.txt'
+  path "${bedFile}", emit: bedFile
+  path "${bimFile}", emit: bimFile
+  path "${famFile}", emit: famFile
+  path 'PopAssignResults.txt', emit: popAssignmentsFile
   
   script:
   """
-  # 1. Do PCA and find outliers
-  Rscript ${baseDir}/scripts/target_pca.R --target_bed ${bedFile} --outlier_threshold ${params.populationOutlierThreshold}
-
-  # 2. Remove outlier samples
-  ~/plink2 --bed ${bedFile} \
-    --bim ${bimFile} \
-    --fam ${famFile} \
-    --output-chr 26 \
-    --keep SamplesToInclude.txt \
-    --make-bed \
-    --threads 4 \
-    --out toImputation
+  # 1. Do PCA on merged target dataset and reference panel
+  project_samples_to_superpop.R --ref_bed ${params.refPath}.bed \
+    --target_bed ${bedFile} \
+    --ref_pop ${params.refPop}
   """
 }
 
-process shuffleSampleOrder {
-  publishDir "${params.outDir}/10_shuffle_sample_order/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+process splitByPopulation {
+  publishDir "${params.outDir}/13_project_samples_to_ref_panel/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
-  memory '1 GB'
+  memory '8 GB'
   cpus 1
 
   input:
   path bedFile
   path bimFile
   path famFile
-  path sampleFile
+  path popAssignmentsFile
   
   output:
-  path 'shuffled.bed', emit: bedFile
-  path 'shuffled.bim', emit: bimFile
-  path 'shuffled.fam', emit: famFile
+  path '*.vcf.gz', emit: vcfFile
+  path '*.txt'
   
-  script:
-  """
-  # 1. Create shuffled sample list
-  Rscript ${baseDir}/scripts/create_shuffled_sample_list.R --sample_file ${sampleFile}
+  shell:
+  '''
+  # 1. Create dir for sample lists
+  mkdir populations
 
-  # 2. Shuffle samples 
-  ~/plink2 --bed ${bedFile} \
-    --bim ${bimFile} \
-    --fam ${famFile} \
-    --indiv-sort f ShuffledSampleOrder.txt \
-    --make-bed \
-    --out shuffled \
-    --threads 4
-  """
+  # 2. Create separate sample lists for populations with n >= 50
+  split_by_population.py !{popAssignmentsFile}
+
+  # 3. For each population sample list, extract samples from dataset
+  for file in populations/*; do
+    if [ -f "$file" ]; then
+      pop=$(basename "$file")
+
+      ~/plink2 --bed !{bedFile} \
+        --bim !{bimFile} \
+        --fam !{famFile} \
+        --keep $file \
+        --recode vcf bgz \
+        --out ${pop}
+    fi
+  done
+  '''
 }
 
+process targetPCA {
+  publishDir "${params.outDir}/15_target_pca/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+  containerOptions "--bind ${params.bindFolder}"
+  maxRetries 2
+  errorStrategy  { task.attempt <= maxRetries  ? 'retry' : 'ignore' }
+
+  time '6h'
+  memory '16 GB'
+  cpus 1
+
+  input:
+  path vcfFile
+  
+  output:
+  path '*_pca.bed', emit: bedFile
+  path '*_pca.bim', emit: bimFile
+  path '*_pca.fam', emit: famFile
+  path '*.SamplesToInclude.txt', emit: sampleFile
+  path '*.OutlierSamples.txt'
+  path '*.log'
+  path '*.png'
+  path '*.pdf'
+  
+  shell:
+  '''
+  # 1. Extract population from file name
+  population=$(basename -s .vcf.gz !{vcfFile})
+
+  # 2. Convert VCF to plink again
+  ~/plink2 --vcf !{vcfFile} \
+    --make-bed \
+    --out converted
+
+  # 3. Do PCA and find outliers
+  target_pca.R --target_bed converted.bed --population ${population} --outlier_threshold 3
+
+  # 4. Remove outlier samples
+  ~/plink2 --bed converted.bed \
+    --bim converted.bim \
+    --fam converted.fam \
+    --output-chr 26 \
+    --keep ${population}.SamplesToInclude.txt \
+    --make-bed \
+    --threads 4 \
+    --out ${population}_pca
+  '''
+}
+
+
 process finalSNPandGenotypeQC {
-  publishDir "${params.outDir}/11_final_snp_and_genotype_qc/", mode: 'copy', pattern: "*.{txt,pdf,png,log}"
+  publishDir "${params.outDir}/16_final_snp_and_genotype_qc/", mode: 'copy'
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
@@ -597,12 +611,17 @@ process finalSNPandGenotypeQC {
   path famFile
   
   output:
-  path 'chrAll_QC.bed'
-  path 'chrAll_QC.bim'
-  path 'chrAll_QC.fam'
+  path 'toImputation.bed', emit: bedFile
+  path 'toImputation.bim', emit: bimFile
+  path 'toImputation.fam', emit: famFile
+  path '*.log'
   
   shell:
   '''
+  # 1. Extract population from file name
+  population=$(basename -s _pca.bed !{bedFile})
+
+  # 2. Run plink command
   ~/plink2 --bed !{bedFile} \
     --bim !{bimFile} \
     --fam !{famFile} \
@@ -612,7 +631,7 @@ process finalSNPandGenotypeQC {
     --hwe !{params.hwe} \
     --autosome \
     --make-bed \
-    --out chrAll_QC \
+    --out toImputation \
     --output-chr 26 \
     --not-chr 0 25-26 \
     --set-all-var-ids @:#[b38]\\$r,\\$a \
@@ -622,14 +641,12 @@ process finalSNPandGenotypeQC {
 }
 
 process finalPCA {
-  publishDir "${params.outDir}/12_final_pca/", mode: 'copy', pattern: "*/*.{txt,pdf,png}"
+  publishDir "${params.outDir}/17_final_pca/", mode: 'copy', pattern: "*.{txt,pdf,png}"
   containerOptions "--bind ${params.bindFolder}"
 
   time '6h'
   memory '16 GB'
   cpus 1
-
-  publishDir "${params.outDir}/het_check/", mode: 'copy', pattern: "*/*.{txt,pdf,png}"
 
   input:
   path bedFile
@@ -641,28 +658,37 @@ process finalPCA {
   path '*.pdf'
   path '*.txt'
   
-  script:
-  """
-  Rscript ${baseDir}/scripts/final_pca.R --target_bed ${bedFile} 
-  """
+  shell:
+  '''
+  # 1. Extract population from file name
+  population=$(basename -s .bed !{bedFile})
+
+  # 2. Run final PCA
+  final_pca.R --target_bed !{bedFile}  --population ${population}
+  '''
 }
 
 
 workflow {
     mergeVCFFiles(params.sampleFile)
-    createGteFile(mergeVCFFiles.out)
-    splitByChromosome(mergeVCFFiles.out) | flatten | removeMultiAllelicVariants
-    wgsQC(removeMultiAllelicVariants.out)
+    splitByChromosome(mergeVCFFiles.out.vcfFile) 
+    splitMultiAllelicVariants(splitByChromosome.out.vcfFile.flatten())
+    wgsQC(splitMultiAllelicVariants.out.vcfFile)
     convertVCFToPlink(wgsQC.out.vcfFile) | collect | mergePlinkFiles
-    calculateAlleleFrequencies(
-      mergePlinkFiles.out.bedFile,
-      mergePlinkFiles.out.bimFile,
-      mergePlinkFiles.out.famFile)
-    plotTargetAndRefAlleleFrequencies(calculateAlleleFrequencies.out)
     snpAndGenotypeQC(
       mergePlinkFiles.out.bedFile,
       mergePlinkFiles.out.bimFile,
-      mergePlinkFiles.out.famFile)
+      mergePlinkFiles.out.famFile
+      )
+
+    calculateAlleleFrequencies(
+      mergePlinkFiles.out.bedFile,
+      mergePlinkFiles.out.bimFile,
+      mergePlinkFiles.out.famFile
+    )
+
+    plotTargetAndRefAlleleFrequencies(calculateAlleleFrequencies.out)
+
     sexCheck(
       snpAndGenotypeQC.out.bedFile,
       snpAndGenotypeQC.out.bimFile,
@@ -674,35 +700,34 @@ workflow {
       sexCheck.out.famFile, 
       calculateAlleleFrequencies.out
       )
-    projectSamplesToRefPanel(
-      heterozygosityCheck.out.bedFile,
-      heterozygosityCheck.out.bimFile,
-      heterozygosityCheck.out.famFile
-      )
     relatednessCheck(
       heterozygosityCheck.out.bedFile,
       heterozygosityCheck.out.bimFile,
       heterozygosityCheck.out.famFile
       )
-    targetPCA(
+    projectSamplesToRefPanel(
       relatednessCheck.out.bedFile,
       relatednessCheck.out.bimFile,
       relatednessCheck.out.famFile
       )
-    shuffleSampleOrder(
-      targetPCA.out.bedFile, 
-      targetPCA.out.bimFile, 
-      targetPCA.out.famFile, 
-      targetPCA.out.sampleFile
-      )
+    splitByPopulation(
+      projectSamplesToRefPanel.out.bedFile,
+      projectSamplesToRefPanel.out.bimFile,
+      projectSamplesToRefPanel.out.famFile,
+      projectSamplesToRefPanel.out.popAssignmentsFile
+    )
+    targetPCA(
+      splitByPopulation.out.vcfFile.flatten()
+    )
+
     finalSNPandGenotypeQC(
-      shuffleSampleOrder.out.bedFile,
-      shuffleSampleOrder.out.bimFile,
-      shuffleSampleOrder.out.famFile
+      relatednessCheck.out.bedFile,
+      relatednessCheck.out.bimFile,
+      relatednessCheck.out.famFile
       )
     finalPCA(
-      shuffleSampleOrder.out.bedFile,
-      shuffleSampleOrder.out.bimFile,
-      shuffleSampleOrder.out.famFile
+      finalSNPandGenotypeQC.out.bedFile,
+      finalSNPandGenotypeQC.out.bimFile,
+      finalSNPandGenotypeQC.out.famFile
       )  
 }

@@ -1,5 +1,7 @@
+#!/opt/conda/envs/eQTLGenPopAssign/bin/Rscript
 # Author: Urmo Võsa
 # Edited by Joost Bakker
+
 
 library(bigreadr)
 library(ggplot2)

@@ -33,17 +33,38 @@ def index_dir(path, samples):
             if extension in FASTQ_EXTENSIONS:
 
                 # If the file name ends with '_1', it is assumed that it is one of two paired end files
-                if file_name.endswith('_1') or file_name.endswith('_r1'):
-                    sample_name = file_name[:-2]
+                if file_name.endswith('_1') or file_name.lower().endswith('_r1') or file_name.endswith('_R1_001') or file_name.lower().endswith('.r1'):
+                    if file_name.lower().endswith('.r1'):
+                        sample_name = file_name[:-3]
+                    
+                    if file_name.endswith('_1'):
+                        sample_name = file_name[:-2]
+                    
+                    if file_name.lower().endswith('_r1'):
+                        sample_name = file_name[:-3]
+
+                    if file_name.endswith('_R1_001'):
+                        sample_name = file_name[:-7]
+                    
                     
                     if sample_name in output_dict and (samples is None or any(substring in entry_path for substring in samples)):
                         output_dict[sample_name]['1'] = entry_path
                     else:
                         output_dict[sample_name] = {'1': entry_path}
 
+
                 # If the file name ends with '_2', it is assumed that it is one of two paired end files
-                elif file_name.endswith('_2') or file_name.endswith('_r2'):
-                    sample_name = file_name[:-2]
+                elif file_name.endswith('_2') or file_name.lower().endswith('_r2') or file_name.endswith('_R2_001') or file_name.lower().endswith('.r2'):
+                    if file_name.lower().endswith('.r2'):
+                        sample_name = file_name[:-3]
+                    
+                    if file_name.endswith('_2'):
+                        sample_name = file_name[:-2]
+                    
+                    if file_name.lower().endswith('_r2'):
+                        sample_name = file_name[:-3]
+                    if file_name.endswith('_R2_001'):
+                        sample_name = file_name[:-7]
 
                     if sample_name in output_dict and (samples is None or any(substring in entry_path for substring in samples)):
                         output_dict[sample_name]['2'] = entry_path
@@ -67,9 +88,9 @@ def write_lines_to_file(output_dict, out_file):
     # Create a list of lines to write to file
     for k, v in output_dict.items():
         if type(v) == str:
-            output_list.append(v)
+            output_list.append(k.split('.')[0] + ',' + v)
         if type(v) == dict and '1' in v and '2' in v:
-            output_list.append(v['1'] + ';' + v['2'])
+            output_list.append(k + ',' + v['1'] + ';' + v['2'])
         
     # Write lines to file    
     f = open(f'{out_file}.txt', 'w')
@@ -83,6 +104,25 @@ def write_lines_to_file(output_dict, out_file):
 
     f.close()
 
+def chunk_file(out_file, chunk_size):
+    fh = open(f'{out_file}.txt','r')
+    lines = fh.readlines()
+    fh.close()
+    ctr = 0 # line ctr
+    wctr = 0 # lines written counter
+    cctr = 1 # chunk counter
+    fho = open(f'{out_file}_{cctr}.txt','w')
+    while(ctr < len(lines)):
+        if ctr % chunk_size == 0 and wctr > 0: # if ctr == 0, this will start a new chunk, unless wctr > 0
+            fho.close()
+            cctr += 1
+            fho = open(f'{out_file}_{cctr}.txt','w')
+            wctr = 0
+        fho.write(lines[ctr])
+        wctr += 1
+        ctr += 1
+    if wctr > 0:
+       fho.close()
 
 if __name__ == '__main__':
     # Create argument parsers object and add arguments
@@ -121,4 +161,5 @@ if __name__ == '__main__':
     output_dict = {}
     index_dir(input_directory, samples)
     write_lines_to_file(output_dict, out_file)
-        
+    chunk_size = 300
+    chunk_file(out_file,chunk_size)
