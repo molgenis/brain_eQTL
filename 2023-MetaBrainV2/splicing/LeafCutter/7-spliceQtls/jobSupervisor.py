@@ -6,6 +6,21 @@ from pathlib import Path
 from datetime import datetime
 import time
 
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--dir", dest="jobdir",
+	help="Directory to look for jobs", required=True)
+parser.add_argument("--start", dest="jobstart",
+	help="Job number to start with")
+parser.add_argument("--stop", dest="jobstop",
+	help="Job number to stop with")
+
+args = vars(parser.parse_args())
+
+
+
+
 result = subprocess.run(['whoami'], stdout=subprocess.PIPE)
 
 user = result.stdout.decode('utf-8')
@@ -20,12 +35,11 @@ dt = datetime.now()
 #print("{} - sleeping for 30 seconds while jobs are killed".format(dt))
 #time.sleep(30)
 
-maxjobs = 100
+maxjobs = 1000
 sleeptime = 15
 sleeptimeseconds = sleeptime * 60
 devperc = 0
-jobfolder = '/groups/umcg-biogen/tmp02/output/2021-FreezeThree/2021-02-18-splicing/2023-02-11-all-samples-leafcutter-fractionfix/7-spliceQtls/outputLowQual-run2/'
-jobfolder = '/groups/umcg-biogen/tmp02/output/2021-FreezeThree/2021-02-18-splicing/2023-02-11-all-samples-leafcutter-fractionfix/7-spliceQtls/outputLowQual-run2-reannotated-nearestgene/Cortex-EUR-minct1-avgpsi0-minNonNan1-dsMeanImp-5PCs-1DS/'
+jobfolder = args["jobdir"]
 
 jobstatus = {}
 

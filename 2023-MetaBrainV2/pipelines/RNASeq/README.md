@@ -155,3 +155,6 @@ Every folder in the above directory tree contains output of the corresponding to
 Orfeas Gkourlias: o.gkourlias@umcg.nl <br>
 Joost Bakker: j.bakker@umcg.nl <br>
 Harm-Jan Westra: h.j.westra@umcg.nl <br>
+
+## License
+The code in this direcotory and its subdirectories is licensed under the BSD 3-Clause License. See the `LICENSE` file in this directory for more information. The license applies only to the current directory and all its subdirectories; it does not extend to higher directories.

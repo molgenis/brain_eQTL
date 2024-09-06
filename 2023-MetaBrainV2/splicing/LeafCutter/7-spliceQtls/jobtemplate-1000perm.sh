@@ -20,7 +20,7 @@ threads=8
 nice -n20 java -Xmx8g \
 	-Djava.util.concurrent.ForkJoinPool.common.parallelism=$threads \
 	-Dmaximum.threads=$threads -Dthread.pool.size=$threads \
-        -jar /groups/umcg-biogen/tmp02/tools/MbQTL-1.3-SNAPSHOT-jar-with-dependencies.jar \
+        -jar MbQTL-1.3-SNAPSHOT-jar-with-dependencies.jar \
         -m mbqtl \
 	-a ANNOTATION \
 	-e EXPRESSION \

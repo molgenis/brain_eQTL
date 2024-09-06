@@ -59,3 +59,6 @@ class Feature:
         if d < mind:
             mind = d
         return mind
+    
+    def coordToStr(self):
+        return f"{self.chr.getNumber()}:{self.start}-{self.stop}"

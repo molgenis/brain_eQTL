@@ -13,6 +13,8 @@ for line in fh:
 	proteincodingset.add(line.strip())
 fh.close()
 
+print(f"Protein coding IDs loaded: {len(proteincodingset)}")
+
 annotfile = sys.argv[1]
 outfile = sys.argv[2]
 

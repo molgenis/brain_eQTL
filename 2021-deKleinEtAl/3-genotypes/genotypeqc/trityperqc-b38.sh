@@ -44,7 +44,7 @@ plink --bfile $workdir/$dsname \
 	--missing \
 	--out $workdir/$dsname
 
-#read -p "Press enter to continue2"
+#read -p "Press enter to continue2
 
 # R script for missingness
 Rscript $missingnessplotscript $workdir/$dsname.lmiss $workdir/$dsname.lmiss.pdf

@@ -66,43 +66,9 @@ df = pd.read_csv(file, sep='\t',index_col=0)
 print("Read matrix: {} x {}".format(df.shape[0], df.shape[1]))
 
 
-if subsample < 1:
-    print(f"Sampling {subsample} * {df.shape[0]} rows")
-    df = df.sample(frac=subsample, axis=0)
-    print("New matrix: {} x {}".format(df.shape[0], df.shape[1]))
-# df.set_index('-')
-print(f"Correlating.. {len(df.columns)} x {len(df.columns)}")
-
-# cormat = df.corr()
-# cormat = cormat.fillna(0)
 
 
-pool = ProcessPoolExecutor(max_workers=threads)
-
-futures = [None] * len(df.columns)
-for i in range(0,len(df.columns)):
-    futures[i] = pool.submit(processI,i,df)
-
-returned = 0
-cormat = [0] * len(df.columns)
-for i in range(0,len(df.columns)):
-    result = futures[i].result()
-    cormat[i] = result
-    # print(result)
-    # sys.exit()
-    returned+=1
-    print(f"{returned} / {len(df.columns)}]",end='\r')
-    sys.stdout.flush()
-print(f"{returned} / {len(df.columns)}]",end='\n')
-sys.stdout.flush()
-print()
-
-for i in range(0,len(df.columns)):
-    cormat[i][i] = 1
-    for j in range(i+1,len(df.columns)):
-        cormat[j][i] = cormat[i][j]
-
-cormat = pd.DataFrame(cormat,columns=df.columns,index=df.columns)
+cormat = df
 print(cormat)
 
 print("Performing decomposition.")

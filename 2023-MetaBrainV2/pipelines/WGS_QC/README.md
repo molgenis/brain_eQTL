@@ -120,3 +120,6 @@ The code for this pipeline is built upon the work of Urmo Võsa, Robert Warmerda
 
 ## Contact
 For any questions or comments about this pipeline, contact: j.m.bakker@umcg.nl
+
+## License
+The code in this direcotory and its subdirectories is licensed under the BSD 3-Clause License. See the LICENSE file in this directory for more information. The license applies only to the current directory and all its subdirectories; it does not extend to higher directories.
